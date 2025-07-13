@@ -1,0 +1,36 @@
+# MATLAB backup and autosave files
+*.asv
+
+# MATLAB binary and cache files
+*.m~           # backup of script
+*.mat          # binary data files
+*.p            # protected code
+*.mex*         # compiled binaries (platform dependent)
+*.log
+*.slxc         # Simulink cache
+*.mlappinstall # App install files
+
+# MATLAB project and workspace files
+*.prj
+*.mlproj
+*.mldatx
+*.mdl
+*.mdlp
+*.fig
+*.tmf
+
+# Simulink generated code
+slprj/
+sccprj/
+work/
+
+# MATLAB code analysis results
+codegen/
+html/
+*.mex*
+*.ctf          # compiled MATLAB Compiler output
+*.cache        # cache folders
+
+# OS-specific
+.DS_Store
+Thumbs.db
