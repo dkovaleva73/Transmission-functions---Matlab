@@ -1,5 +1,6 @@
 function Trans = ozoneTransmission(Z_, Dobson_units, Lam, Args)
-    % Ozone transmission.
+    % Ozone transmission of the Earth atmosphere.
+    % Based on SMARTS 2.9.5 model.
     % Input :  - Z_ (double): The zenith angle in degrees.
     %          - Dobson_units (double): The ozone column in Dobson units.
     %          - Lam (double array): Wavelength array (by default, in nm).
@@ -9,10 +10,10 @@ function Trans = ozoneTransmission(Z_, Dobson_units, Lam, Args)
     %             'AbsData' - Pre-loaded absorption data structure
     % Output :  - transmission (double array): The calculated transmission values (0-1).
     % Author : D. Kovaleva (Jul 2025)
+    % Reference: Gueymard, C. A. (2019). Solar Energy, 187, 233-253.
     % Example:   % Standalone usage (loads data internally, slower):
     %            Lam = transmission.utils.make_wavelength_array(280, 400, 121);
     %            Trans = transmission.atmospheric.ozoneTransmission(30, 300, Lam);
-    %            
     %            % Pipeline usage (load once, reuse multiple times, faster):
     %            Abs_data = transmission.data.loadAbsorptionData();  % Load once
     %            Trans1 = transmission.atmospheric.ozoneTransmission(30, 300, Lam, 'AbsData', Abs_data);
@@ -58,7 +59,12 @@ function Trans = ozoneTransmission(Z_, Dobson_units, Lam, Args)
     
     % Interpolate ozone cross-sections to wavelength array
     Ozone_xs_interp = interp1(Abs_wavelength, Ozone_cross_section, Lam, 'linear', 0);
-    
+    %Ozone_xs_interp = tools.interp.interp1evenlySpaced(Abs_wavelength, Ozone_cross_section, Lam);
+    %%%%%%     PROBLEM: interpolation is relatively slow  %%%%%%%%%%%%%%%
+    %%% POSSIBLE SOLUTION: rearrange the net of input data [in
+    %loadAbsorptionData] using slow interpolator, make it even and then use
+    %fast interpolator for evenly spaced set %%%
+
     % Absorption coefficients are already corrected in loadAbsorptionData
     Absorption_coeff = Ozone_xs_interp;
     

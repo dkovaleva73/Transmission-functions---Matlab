@@ -19,6 +19,7 @@ function Abs_data = loadAbsorptionData(Data_path, Species, Verbose, Validate)
     %          - .Species.loaded     - Loading timestamp
     %            (additional fields depend on species)
     % Author  : D. Kovaleva (July 2025)
+    % Reference: Gueymard, C. A. (2019). Solar Energy, 187, 233-253.
     % Example : Abs_data = transmission.data.loadAbsorptionData();
     %           Ozone_wavelength = abs_data.O3UV.wavelength;
     %           Ozone_absorption = abs_data.O3UV.absorption;
