@@ -13,7 +13,7 @@ function Lam = makeWavelengthArray(Min_wvl, Max_wvl, Num_points, Args)
     % Example: Lam = transmission.utils.make_wavelength_array();
     %          Lam_coarse = transmission.utils.make_wavelength_array(400, 800, 81);
     arguments
-        Min_wvl  = 300.0;
+        Min_wvl  = 300.0; 
         Max_wvl  = 1100.0;
         Num_points = 401;
         Args.WaveUnits = 'nm';
