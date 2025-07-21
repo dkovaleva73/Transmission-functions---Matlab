@@ -1,0 +1,64 @@
+function Trans = ozoneTransmission(Z_, Dobson_units, Lam, Args)
+    % Ozone transmission.
+    %
+    % Input:   - Z_ (double): The zenith angle in degrees.
+    %          - Dobson_units (double): The ozone column in Dobson units.
+    %          - Lam (double array): Wavelength array (by default, in nm).
+    %          * ...,key,val,...
+    %             'WaveUnits' -  'A','Ang'|'nm'
+    % Output:  - transmission (double array): The calculated transmission values (0-1).
+    %
+    % Example:   Lam = transmission.utils.make_wavelength_array(280, 400, 121);
+    %            Trans = transmission.atmospheric.ozone(30, 300, Lam);
+    
+    arguments
+        Z_
+        Dobson_units 
+        Lam
+        Args.WaveUnits  = 'nm';
+    end  
+    
+    % Constants
+    NLOSCHMIDT = 2.6867811e19;  % cm-3, Loschmidt number
+
+    % Convert Dobson units to atm-cm
+    Ozone_atm_cm = Dobson_units * 0.001;
+    
+    % Checkup for zenith angle value correctness
+    if Z_ > 90 || Z_ < 0
+        error('Zenith angle out of range [0, 90] deg');
+    end
+
+    % Calculate airmass using SMARTS coefficients for ozone
+    Am_ = transmission.utils.airmassFromSMARTS(Z_, 'o3');
+    
+
+    % uploading ozone data
+    Data_file = {'/home/matlab/data/transmission_fitter/Abs_O3UV.dat'};
+    
+    if isempty(Data_file)
+        error('Ozone data file (Abs_O3UV.dat) not found in expected location');
+    end
+    
+    % Read ozone absorption data (skip header, use first two columns)
+    Data = readtable(Data_file, 'Delimiter', '\t', 'ReadVariableNames', true);
+    Abs_wavelength = Data.Wvl_nm;
+    Ozone_cross_section = Data.Ref_228K;
+    
+    
+
+    
+    % Interpolate ozone cross-sections to wavelength array
+    Ozone_xs_interp = interp1(Abs_wavelength, Ozone_cross_section, Lam, 'linear', 0);
+    
+    % Calculate absorption coefficient
+    Absorption_coeff = NLOSCHMIDT * Ozone_xs_interp;
+    
+  
+    % Calculate optical depth
+    Tau_ozone = Absorption_coeff * Ozone_atm_cm;
+    
+    % Calculate transmission and clip to [0,1]
+    Trans = exp(-Am_ .* Tau_ozone);
+    Trans = max(0, min(1, Trans));
+end
