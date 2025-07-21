@@ -7,16 +7,16 @@ function Transm = rayleighTransmission(Z_, Pressure, Lam, Args)
     %          * ...,key,val,...
     %          'WaveUnits' -  'A','Ang'|'nm'
     % Output : - Transm (double array): The calculated transmission values (0-1).
-    % Reference: Gueymard, C. A. (2019). Solar Energy, 187, 233-253.
+    % Reference: Gueymard, C. A. (2019). Solar Energy, 187, 233-253. SMARTS
+    % model.
     % Author:    D. Kovaleva (July 2025).
     % Example:   Lam = transmission.utils.make_wavelength_array();
     %            Trans = transmission.atmospheric.rayleighTransmission(30, 1013.25, Lam);   
     arguments
         Z_
-        Pressure
+        Pressure 
         Lam
         Args.WaveUnits = 'nm';
-    %   Args.P0        = 1013.25;  % standard pressure
     end
 
     % Checkup for zenith angle value correctness
@@ -24,7 +24,7 @@ function Transm = rayleighTransmission(Z_, Pressure, Lam, Args)
         error('Zenith angle out of range [0, 90] deg');
     end
 
-    % Calculate airmass from SMARTS model by Gueymard, C. A. (2019) 
+    % Calculate airmass from SMARTS model 
     Am_ = transmission.utils.airmassFromSMARTS(Z_, 'rayleigh');
     
     % Convert wavelength to Angstroms

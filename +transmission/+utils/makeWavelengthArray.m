@@ -5,7 +5,7 @@ function Lam = makeWavelengthArray(Min_wvl, Max_wvl, Num_points, Args)
     %          - Max_wvl (double): Maximum wavelength (default: 1100)  
     %          - Num_points (int): Number of points (default: 401)
     %          * ...,key,val,... 
-    %         'WaveUnits' - 
+    %         'WaveUnits' - 'A','Ang'|'nm'
     % Output : - Lam (double array): Wavelength array 
     % Notes :  Num_points = 401 points mimics Gaia sampling (dLambda = 2nm)
     %          Num_points = 81 points gives dLambda = 10nm 

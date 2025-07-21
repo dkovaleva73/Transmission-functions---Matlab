@@ -1,26 +1,31 @@
 function Trans = ozoneTransmission(Z_, Dobson_units, Lam, Args)
     % Ozone transmission.
-    %
-    % Input:   - Z_ (double): The zenith angle in degrees.
+    % Input :  - Z_ (double): The zenith angle in degrees.
     %          - Dobson_units (double): The ozone column in Dobson units.
     %          - Lam (double array): Wavelength array (by default, in nm).
+    %          - Abs_data (struct, optional): Pre-loaded absorption data from loadAbsorptionData()
     %          * ...,key,val,...
     %             'WaveUnits' -  'A','Ang'|'nm'
-    % Output:  - transmission (double array): The calculated transmission values (0-1).
-    %
-    % Example:   Lam = transmission.utils.make_wavelength_array(280, 400, 121);
-    %            Trans = transmission.atmospheric.ozone(30, 300, Lam);
+    %             'AbsData' - Pre-loaded absorption data structure
+    % Output :  - transmission (double array): The calculated transmission values (0-1).
+    % Author : D. Kovaleva (Jul 2025)
+    % Example:   % Standalone usage (loads data internally, slower):
+    %            Lam = transmission.utils.make_wavelength_array(280, 400, 121);
+    %            Trans = transmission.atmospheric.ozoneTransmission(30, 300, Lam);
+    %            
+    %            % Pipeline usage (load once, reuse multiple times, faster):
+    %            Abs_data = transmission.data.loadAbsorptionData();  % Load once
+    %            Trans1 = transmission.atmospheric.ozoneTransmission(30, 300, Lam, 'AbsData', Abs_data);
+    %            Trans2 = transmission.atmospheric.ozoneTransmission(45, 350, Lam, 'AbsData', Abs_data);
     
     arguments
         Z_
         Dobson_units 
         Lam
         Args.WaveUnits  = 'nm';
+        Args.AbsData = [];
     end  
     
-    % Constants
-    NLOSCHMIDT = 2.6867811e19;  % cm-3, Loschmidt number
-
     % Convert Dobson units to atm-cm
     Ozone_atm_cm = Dobson_units * 0.001;
     
@@ -33,26 +38,29 @@ function Trans = ozoneTransmission(Z_, Dobson_units, Lam, Args)
     Am_ = transmission.utils.airmassFromSMARTS(Z_, 'o3');
     
 
-    % uploading ozone data
-    Data_file = {'/home/matlab/data/transmission_fitter/Abs_O3UV.dat'};
-    
-    if isempty(Data_file)
-        error('Ozone data file (Abs_O3UV.dat) not found in expected location');
+    % Get ozone absorption data
+    if isempty(Args.AbsData)
+        % Load data if not provided (standalone usage)
+        Abs_data = transmission.data.loadAbsorptionData([], {'O3UV'}, false);
+    else
+        % Use pre-loaded data (efficient pipeline usage)
+        Abs_data = Args.AbsData;
     end
     
-    % Read ozone absorption data (skip header, use first two columns)
-    Data = readtable(Data_file, 'Delimiter', '\t', 'ReadVariableNames', true);
-    Abs_wavelength = Data.Wvl_nm;
-    Ozone_cross_section = Data.Ref_228K;
+    % Extract ozone cross-section data directly
+    if ~isfield(Abs_data, 'O3UV')
+        error('O3UV data not found in absorption data structure');
+    end
     
+    Abs_wavelength = Abs_data.O3UV.wavelength;
+    Ozone_cross_section = Abs_data.O3UV.absorption;
     
-
     
     % Interpolate ozone cross-sections to wavelength array
     Ozone_xs_interp = interp1(Abs_wavelength, Ozone_cross_section, Lam, 'linear', 0);
     
-    % Calculate absorption coefficient
-    Absorption_coeff = NLOSCHMIDT * Ozone_xs_interp;
+    % Absorption coefficients are already corrected in loadAbsorptionData
+    Absorption_coeff = Ozone_xs_interp;
     
   
     % Calculate optical depth

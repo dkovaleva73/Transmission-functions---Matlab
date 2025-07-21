@@ -1,13 +1,11 @@
 function Airmass = airmassFromSMARTS(Z_, Constituent)
     % Calculate the airmass using SMARTS2.9.5 tabulated values.
-    %
     % Input:   - Z_ (double): The zenith angle in degrees.
     %          - Constituent (char): The atmospheric constituent. Default is 'rayleigh'.
     %            Constituents available are: 'rayleigh'; 'aerosol'; 'o3'/'ozone';
     %            'h2o'/'water'; 'o2'; 'ch4'; 'co'; 'n2o'; 'co2'; 'n2'; 'hno3';
     %            'no2'; 'no'; 'so2'; 'nh3'.
     % Output:  - Airmass (double): The calculated airmass.
-    %
     % Reference: Gueymard, C. A. (2019). Solar Energy, 187, 233-253.
     % Author:    D. Kovaleva (July 2025).
     % Example:   Am_ = transmission.utils.airmassFromSMARTS(Z_, 'rayleigh');
