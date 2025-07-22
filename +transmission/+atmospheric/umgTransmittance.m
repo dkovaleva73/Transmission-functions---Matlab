@@ -1,159 +1,190 @@
-function transmission = umgTransmittance(Z_, Tair, Pressure, Lam, Co2_ppm, With_trace_gases)
+function transmission = umgTransmittance(Z_, Tair, Pressure, Lam, Co2_ppm, With_trace_gases, Args)
     % Calculate Uniformly Mixed Gases (UMG) transmission.
-    %
-    % Parameters:
+    % MEMORY OPTIMIZED VERSION: Enhanced for better memory layout and cache performance
+    % Input :
     %   Z_ (double): The zenith angle in degrees.
     %   Tair (double): Air temperature in degrees Celsius.
     %   Pressure (double): Atmospheric pressure in hPa.
     %   Lam (double array): Wavelength array in nm.
     %   Co2_ppm (double): CO2 concentration in ppm (default: 395).
     %   With_trace_gases (logical): Include trace gases (default: true).
+    %   Args.AbsData (struct, optional): Pre-loaded absorption data from loadAbsorptionData()
     %
     % Returns:
     %   transmission (double array): The calculated transmission values (0-1).
     %
+    % Author: D. Kovaleva (July 2025) - Memory optimized version
+    % Reference: SMARTS 2.9.5 model implementation
+    %
     % Example:
+    %   % Standalone usage (loads data internally):
     %   Lam = transmission.utils.makeWavelengthArray();
-    %   Trans = transmission.atmospheric.umgTransmittance(30, 15, 1013.25, Lam, 415, true);
+    %   Trans = transmission.atmospheric.umgTransmittanceOptimized(30, 15, 1013.25, Lam, 415, true);
+    %   
+    %   % Pipeline usage (RECOMMENDED for best performance):
+    %   Abs_data = transmission.data.loadAbsorptionData();
+    %   Trans = transmission.atmospheric.umgTransmittanceOptimized(30, 15, 1013.25, Lam, 415, true, 'AbsData', Abs_data);
     
-    % Set default values
-    if nargin < 5
-        Co2_ppm = 395.0;
-    end
-    if nargin < 6
-        With_trace_gases = true;
+    arguments
+        Z_
+        Tair 
+        Pressure
+        Lam
+        Co2_ppm = 395.0
+        With_trace_gases = true
+        Args.AbsData = [];
     end
     
-    % Constants
-    NLOSCHMIDT = 2.6867811e19;  % cm-3, Loschmidt number
+    % =========================================================================
+    % INPUT VALIDATION AND PARAMETER SETUP
+    % =========================================================================
+    
+    % Basic validation
+    if Z_ < 0 || Z_ > 90
+        error('transmission:umgTransmittance:invalidZenith', 'Zenith angle must be in [0,90] degrees');
+    end
+    if Pressure <= 0
+        error('transmission:umgTransmittance:invalidPressure', 'Pressure must be positive');
+    end
+    
+    % Convert temperature and normalize pressure/temperature
+    Tair_kelvin = Tair + 273.15;
+    Pp0 = Pressure / 1013.25;
+    Tt0 = Tair_kelvin / 273.15;
+    
+    % Ensure wavelength array is column vector for cache-friendly access
+    Lam = Lam(:);
+    Lam_length = length(Lam);
+    
+    % Pre-allocate total optical depth
+    Tau_total = zeros(Lam_length, 1);
+    
+    % =========================================================================
+    % EFFICIENT DATA LOADING WITH MEMORY-OPTIMIZED LOADER
+    % =========================================================================
+    
+    % Get absorption data using memory-optimized loader
+    if isempty(Args.AbsData)
+        % Load all UMG species at once for better I/O performance
+        UMG_species = {'O2', 'CH4', 'CO', 'N2O', 'CO2', 'N2', 'O4'};
+        if With_trace_gases
+            UMG_species{end+1} = 'NH3';  % Add trace gases as needed
+        end
+        
+        fprintf('Loading UMG absorption data (memory-optimized)...\n');
+        
+        % Use memory-optimized data loader
+        Abs_data = transmission.data.loadAbsorptionData([], UMG_species, false);
+    else
+        Abs_data = Args.AbsData;
+    end
+    
+    % =========================================================================
+    % PRE-COMPUTE AIRMASS VALUES
+    % =========================================================================
     
     % Import airmass function
     import transmission.utils.*
     
-    % Convert temperature to absolute scale
-    Tair_kelvin = Tair + 273.15;
+    % Pre-compute all airmass values at once for better performance
+    Am_o2 = airmassFromSMARTS(Z_, 'o2');
+    Am_ch4 = airmassFromSMARTS(Z_, 'ch4');
+    Am_co = airmassFromSMARTS(Z_, 'co');
+    Am_n2o = airmassFromSMARTS(Z_, 'n2o');
+    Am_co2 = airmassFromSMARTS(Z_, 'co2');
+    Am_n2 = airmassFromSMARTS(Z_, 'n2');
+    Am_o4 = Am_o2;  % O4 uses O2 airmass
     
-    % Normalized pressure and temperature
-    Pp0 = Pressure / 1013.25;
-    Tt0 = Tair_kelvin / 273.15;
+    % =========================================================================
+    % PRE-COMPUTE ABUNDANCE FACTORS
+    % =========================================================================
     
-    % Initialize total optical depth
-    Tau_total = zeros(size(Lam));
+    % Pre-compute all abundance factors (vectorized where possible)
+    Abundance_o2 = 1.67766e5 * Pp0;
+    Abundance_ch4 = 1.3255 * (Pp0 ^ 1.0574);
+    Abundance_co = 0.29625 * (Pp0^2.4480) * exp(0.54669 - 2.4114 * Pp0 + 0.65756 * (Pp0^2));
+    Abundance_n2o = 0.24730 * (Pp0^1.0791);
+    Abundance_co2 = 0.802685 * Co2_ppm * Pp0;
+    Abundance_n2 = 3.8269 * (Pp0^1.8374);
+    Abundance_o4 = 1.8171e4 * (constant.Loschmidt^2) * (Pp0^1.7984) / (Tt0^0.344);
     
-    % UNIFORMLY MIXED GASES
-    fprintf('Loading uniformly mixed gases data...\n');
+    % =========================================================================
+    % UNIFORMLY MIXED GASES PROCESSING
+    % Direct access to pre-loaded absorption data for maximum efficiency
+    % =========================================================================
     
     % 1. Oxygen (O2)
-    O2_abs = readGasData('O2', Lam);
-    O2_abundance = 1.67766e5 * Pp0;
-    Am_o2 = airmassFromSMARTS(Z_, 'o2');
-    Tau_total = Tau_total + O2_abs .* O2_abundance .* Am_o2;
+    if isfield(Abs_data, 'O2')
+        O2_abs = interp1(Abs_data.O2.wavelength, Abs_data.O2.absorption, Lam, 'linear', 0);
+        Tau_total = Tau_total + O2_abs .* Abundance_o2 .* Am_o2;
+    end
     
     % 2. Methane (CH4)
-    Ch4_abs = readGasData('CH4', Lam);
-    Ch4_abundance = 1.3255 * (Pp0 ^ 1.0574);
-    Am_ch4 = airmassFromSMARTS(Z_, 'ch4');
-    Tau_total = Tau_total + Ch4_abs .* Ch4_abundance .* Am_ch4;
+    if isfield(Abs_data, 'CH4')
+        Ch4_abs = interp1(Abs_data.CH4.wavelength, Abs_data.CH4.absorption, Lam, 'linear', 0);
+        Tau_total = Tau_total + Ch4_abs .* Abundance_ch4 .* Am_ch4;
+    end
     
     % 3. Carbon Monoxide (CO)
-    Co_abs = readGasData('CO', Lam);
-    Co_abundance = 0.29625 * (Pp0^2.4480) * exp(0.54669 - 2.4114 * Pp0 + 0.65756 * (Pp0^2));
-    Am_co = airmassFromSMARTS(Z_, 'co');
-    Tau_total = Tau_total + Co_abs .* Co_abundance .* Am_co;
+    if isfield(Abs_data, 'CO')
+        Co_abs = interp1(Abs_data.CO.wavelength, Abs_data.CO.absorption, Lam, 'linear', 0);
+        Tau_total = Tau_total + Co_abs .* Abundance_co .* Am_co;
+    end
     
     % 4. Nitrous Oxide (N2O)
-    N2o_abs = readGasData('N2O', Lam);
-    N2o_abundance = 0.24730 * (Pp0^1.0791);
-    Am_n2o = airmassFromSMARTS(Z_, 'n2o');
-    Tau_total = Tau_total + N2o_abs .* N2o_abundance .* Am_n2o;
+    if isfield(Abs_data, 'N2O')
+        N2o_abs = interp1(Abs_data.N2O.wavelength, Abs_data.N2O.absorption, Lam, 'linear', 0);
+        Tau_total = Tau_total + N2o_abs .* Abundance_n2o .* Am_n2o;
+    end
     
     % 5. Carbon Dioxide (CO2)
-    Co2_abs = readGasData('CO2', Lam);
-    Co2_abundance = 0.802685 * Co2_ppm * Pp0;
-    Am_co2 = airmassFromSMARTS(Z_, 'co2');
-    Tau_total = Tau_total + Co2_abs .* Co2_abundance .* Am_co2;
+    if isfield(Abs_data, 'CO2')
+        Co2_abs = interp1(Abs_data.CO2.wavelength, Abs_data.CO2.absorption, Lam, 'linear', 0);
+        Tau_total = Tau_total + Co2_abs .* Abundance_co2 .* Am_co2;
+    end
     
     % 6. Nitrogen (N2)
-    N2_abs = readGasData('N2', Lam);
-    N2_abundance = 3.8269 * (Pp0^1.8374);
-    Am_n2 = airmassFromSMARTS(Z_, 'n2');
-    Tau_total = Tau_total + N2_abs .* N2_abundance .* Am_n2;
+    if isfield(Abs_data, 'N2')
+        N2_abs = interp1(Abs_data.N2.wavelength, Abs_data.N2.absorption, Lam, 'linear', 0);
+        Tau_total = Tau_total + N2_abs .* Abundance_n2 .* Am_n2;
+    end
     
     % 7. Oxygen-Oxygen collision complex (O4)
-    O4_abs = readGasData('O4', Lam) * 1e-46;  % Special scaling factor
-    O4_abundance = 1.8171e4 * (NLOSCHMIDT^2) * (Pp0^1.7984) / (Tt0^0.344);
-    Am_o4 = airmassFromSMARTS(Z_, 'o2');  % Use O2 airmass for O4
-    Tau_total = Tau_total + O4_abs .* O4_abundance .* Am_o4;
+    if isfield(Abs_data, 'O4')
+        O4_abs = interp1(Abs_data.O4.wavelength, Abs_data.O4.absorption, Lam, 'linear', 0) * 1e-46;
+        Tau_total = Tau_total + O4_abs .* Abundance_o4 .* Am_o4;
+    end
     
-    % TRACE GASES (optional) - Simplified version for now
+    % =========================================================================
+    % TRACE GASES PROCESSING
+    % =========================================================================
+    
     if With_trace_gases
-        fprintf('Loading trace gases data...\n');
+        fprintf('Processing trace gases...\n');
         
-        % For now, add a simple approximation for major trace gases
-        % NH3 (simple case)
-        try
-            Nh3_abs = readGasData('NH3', Lam);
-            Log_pp0 = log(Pp0);
-            Nh3_abundance = exp(-8.6499 + 2.1947 * Log_pp0 - 2.5936 * (Log_pp0^2) - ...
-                               1.819 * (Log_pp0^3) - 0.65854 * (Log_pp0^4));
-            Am_nh3 = airmassFromSMARTS(Z_, 'nh3');
-            Tau_total = Tau_total + Nh3_abs .* Nh3_abundance .* Am_nh3;
-        catch ME
-            warning('NH3 trace gas calculation failed: %s', ME.message);
+        % NH3 (Ammonia)
+        if isfield(Abs_data, 'NH3') && Pp0 > 0  % Avoid log(0)
+            try
+                Nh3_abs = interp1(Abs_data.NH3.wavelength, Abs_data.NH3.absorption, Lam, 'linear', 0);
+                Log_pp0 = log(Pp0);
+                Nh3_abundance = exp(-8.6499 + 2.1947 * Log_pp0 - 2.5936 * (Log_pp0^2) - ...
+                                   1.819 * (Log_pp0^3) - 0.65854 * (Log_pp0^4));
+                Am_nh3 = airmassFromSMARTS(Z_, 'nh3');
+                Tau_total = Tau_total + Nh3_abs .* Nh3_abundance .* Am_nh3;
+            catch ME
+                warning('NH3 trace gas calculation failed: %s', ME.message);
+            end
         end
         
-        % Additional trace gases can be added here individually
-        % For now, keeping it simple to ensure the main function works
+        % Additional trace gases can be added here following the same pattern
     end
+    
+    % =========================================================================
+    % FINAL TRANSMISSION CALCULATION
+    % =========================================================================
     
     % Calculate transmission and clip to [0,1]
     transmission = exp(-Tau_total);
     transmission = max(0, min(1, transmission));
 end
 
-function abs_data = readGasData(gas_name, Lam)
-    % Read simple gas absorption data (single column)
-    
-    try
-        Data_file = getGasDataPath(gas_name);
-        if ~isempty(Data_file) && exist(Data_file, 'file')
-            Data = readtable(Data_file, 'Delimiter', '\t', 'ReadVariableNames', false, 'HeaderLines', 1);
-            Gas_wavelength = Data.Var1;
-            Gas_absorption = Data.Var2;
-            abs_data = interp1(Gas_wavelength, Gas_absorption, Lam, 'linear', 0);
-        else
-            warning('Gas data file not found for %s, using zeros', gas_name);
-            abs_data = zeros(size(Lam));
-        end
-    catch ME
-        warning('Error reading gas data for %s: %s', gas_name, ME.message);
-        abs_data = zeros(size(Lam));
-    end
-end
-
-function file_path = getGasDataPath(gas_name)
-    % Get the file path for gas absorption data
-    
-     file_path = sprintf('/home/dana/matlab/data_Transmission_Fitter/Templates/Abs_%s.dat', gas_name);
-    
-    % Primary data location provided by user
-%    Primary_path = sprintf('/home/dana/matlab/data_Transmission_Fitter/Templates/Abs_%s.dat', gas_name);
-    
-    % Backup search locations
-%    Possible_paths = {
-%        Primary_path, ...
-%        sprintf('/home/dana/Documents/MATLAB/inwork/data/Templates/Abs_%s.dat', gas_name), ...
-%        sprintf('/home/dana/anaconda3/lib/python3.12/site-packages/transmission_fitter/data/Templates/Abs_%s.dat', gas_name)
-%    };
-    
-%    file_path = '';
-%    for I = 1:length(Possible_paths)
-%        if exist(Possible_paths{I}, 'file')
-%            file_path = Possible_paths{I};
-%            return;
-%        end
-%   end
-    
-    % If not found, return empty - will trigger warning in calling function
-%    file_path = '';
-end
