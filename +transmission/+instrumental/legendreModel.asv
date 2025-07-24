@@ -1,7 +1,7 @@
-function Leg_model = legendreModel(Lam, Degr, Li, Min_wvl, Max_wvl)
+function Leg_model = legendreModel(Lam, Dim, Li, Min_wvl, Max_wvl)
     % Calculate Legendre polynomial model for instrumental transmission
     % Input  : - Lam (double array): Wavelength array in nm
-    %          - Degr (integer): degree of Legendre polynom
+    %           - Dim
     %          - Li (double): vector of Legendre polynomial coefficients
     %          - Min_wvl (double): Minimum wavelength for normalization
     %          - Max_wvl (double): Maximum wavelength for normalization
@@ -14,8 +14,16 @@ function Leg_model = legendreModel(Lam, Degr, Li, Min_wvl, Max_wvl)
 
     arguments
         Lam  = transmission.utils.makeWavelengthArray()
-        Degr = 8
-        Li = [-0.30 0.34 -1.89 -0.82 -3.73 -0.669 -2.06 -0.24 -0.60]
+        Li = (-0.30,0.34,-1.89,-0.82,-3.73,-0.669,-2.06,-0.24,-0.60)
+        L0 = 
+        L1 =
+        L2 =
+        L3 =
+        L4 =
+        L5 =
+        L6 =
+        L7 =
+        L8 =
         Min_wvl = min(Lam)
         Max_wvl = max(Lam)
     end
@@ -38,7 +46,7 @@ function Leg_model = legendreModel(Lam, Degr, Li, Min_wvl, Max_wvl)
     Leg_8 = 0.0078125 * (6435 * New_lambda.^8 - 12012 * New_lambda.^6 + 6930 * New_lambda.^4 - 1260 * New_lambda.^2 + 35);
     
     % Calculate Legendre model
-    Leg_expansion = Li(0) * Leg_0 + Li(1) * Leg_1 + Li(2) * Leg_2 + L3 * Leg_3 + L4 * Leg_4 + ...
+    Leg_expansion = L0 * Leg_0 + L1 * Leg_1 + L2 * Leg_2 + L3 * Leg_3 + L4 * Leg_4 + ...
                    L5 * Leg_5 + L6 * Leg_6 + L7 * Leg_7 + L8 * Leg_8;
     
     % Return exponential of the expansion

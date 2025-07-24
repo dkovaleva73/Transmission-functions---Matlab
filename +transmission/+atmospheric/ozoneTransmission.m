@@ -10,7 +10,8 @@ function Trans = ozoneTransmission(Z_, Dobson_units, Lam, Args)
     %             'AbsData' - Pre-loaded absorption data structure
     % Output :  - transmission (double array): The calculated transmission values (0-1).
     % Author : D. Kovaleva (Jul 2025)
-    % Reference: Gueymard, C. A. (2019). Solar Energy, 187, 233-253.
+    % References: 1. Gueymard, C. A. (2019). Solar Energy, 187, 233-253.
+    %             2. Garrappa et al. 2025, A&A 699, A50
     % Example:   % Standalone usage (loads data internally, slower):
     %            Lam = transmission.utils.make_wavelength_array(280, 400, 121);
     %            Trans = transmission.atmospheric.ozoneTransmission(30, 300, Lam);
