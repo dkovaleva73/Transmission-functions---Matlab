@@ -1,0 +1,3 @@
+loadAbsorptionData +
+
+Discuss: optimization? regularization of absorption data to even net? 

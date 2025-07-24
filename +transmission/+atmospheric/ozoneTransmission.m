@@ -60,10 +60,6 @@ function Trans = ozoneTransmission(Z_, Dobson_units, Lam, Args)
     % Interpolate ozone cross-sections to wavelength array
     Ozone_xs_interp = interp1(Abs_wavelength, Ozone_cross_section, Lam, 'linear', 0);
     %Ozone_xs_interp = tools.interp.interp1evenlySpaced(Abs_wavelength, Ozone_cross_section, Lam);
-    %%%%%%     PROBLEM: interpolation is relatively slow  %%%%%%%%%%%%%%%
-    %%% POSSIBLE SOLUTION: rearrange the net of input data [in
-    %loadAbsorptionData] using slow interpolator, make it even and then use
-    %fast interpolator for evenly spaced set %%%
 
     % Absorption coefficients are already corrected in loadAbsorptionData
     Absorption_coeff = Ozone_xs_interp;

@@ -77,7 +77,10 @@ function Trans = umgTransmittance(Z_, Tair, Pressure, Lam, Co2_ppm, With_trace_g
     Am_n2 = transmission.utils.airmassFromSMARTS(Z_, 'n2');
     Am_o4 = Am_o2;  % O4 uses O2 airmass
     
-
+    % =========================================================================
+    % PRE-COMPUTE ABUNDANCE FACTORS
+    % =========================================================================
+    
     % Pre-compute all abundance factors (vectorized where possible)
     Abundance_o2 = 1.67766e5 * Pp0;
     Abundance_ch4 = 1.3255 * (Pp0 ^ 1.0574);
@@ -89,7 +92,7 @@ function Trans = umgTransmittance(Z_, Tair, Pressure, Lam, Co2_ppm, With_trace_g
     
     % =========================================================================
     % UNIFORMLY MIXED GASES PROCESSING
-    % Direct access to pre-loaded absorption data 
+    % Direct access to pre-loaded absorption data for maximum efficiency
     % =========================================================================
     
     % 1. Oxygen (O2)

@@ -1,22 +1,27 @@
-function Trans = umgTransmittance(Z_, Tair, Pressure, Lam, Co2_ppm, With_trace_gases, Args)
-    % Calculate Uniformly Mixed Gases (UMG) transmittance implementing SMARTS 2.9.5 model.
-    % Input  : - Z_ (double): The zenith angle in degrees.
-    %          - Tair (double): Air temperature in degrees Celsius.
-    %          - Pressure (double): Atmospheric pressure in hPa.
-    %          - Lam (double array): Wavelength array in nm.
-    %          - Co2_ppm (double): CO2 concentration in ppm (default: 395).
-    %          - With_trace_gases (logical): Include trace gases (default: true).
-    %          * ...,key,val,...%          
-    %          Args.AbsData : Pre-loaded absorption data from loadAbsorptionData()
-    % Output : Trans (double array): The calculated transmission values (0-1).
-    % Author : D. Kovaleva (July 2025) 
-    % Reference: Gueymard, C. A. (2019). Solar Energy, 187, 233-253.
-    % Example:  %   % Standalone usage (loads data internally):
-    %           Lam = transmission.utils.makeWavelengthArray();
-    %           Trans = transmission.atmospheric.umgTransmittance(30, 15, 1013.25, Lam, 415, true);
-    %           %   % Pipeline usage (RECOMMENDED for best performance):
-    %           Abs_data = transmission.data.loadAbsorptionData();
-    %           Trans = transmission.atmospheric.umgTransmittance(30, 15, 1013.25, Lam, 415, true, 'AbsData', Abs_data);
+function transmission = umgTransmittance(Z_, Tair, Pressure, Lam, Co2_ppm, With_trace_gases, Args)
+    % Calculate Uniformly Mixed Gases (UMG) transmittance using SMARTS 2.9.5 atmosphere transmission model.
+    % Input : - Z_ (double): The zenith angle in degrees.
+    %         - Tair (double): Air temperature in degrees Celsius.
+    %         - Pressure (double): Atmospheric pressure in hPa.
+    %         - Lam (double array): Wavelength array in nm.
+    %         - Co2_ppm (double): CO2 concentration in ppm (default: 395).
+    %   With_trace_gases (logical): Include trace gases (default: true).
+    %   Args.AbsData (struct, optional): Pre-loaded absorption data from loadAbsorptionData()
+    %
+    % Output :
+    %   transmission (double array): The calculated transmission values (0-1).
+    %
+    % Author: D. Kovaleva (July 2025) - Memory optimized version
+    % Reference: SMARTS 2.9.5 model implementation
+    %
+    % Example:
+    %   % Standalone usage (loads data internally):
+    %   Lam = transmission.utils.makeWavelengthArray();
+    %   Trans = transmission.atmospheric.umgTransmittanceOptimized(30, 15, 1013.25, Lam, 415, true);
+    %   
+    %   % Pipeline usage (RECOMMENDED for best performance):
+    %   Abs_data = transmission.data.loadAbsorptionData();
+    %   Trans = transmission.atmospheric.umgTransmittanceOptimized(30, 15, 1013.25, Lam, 415, true, 'AbsData', Abs_data);
     
     arguments
         Z_
@@ -52,6 +57,10 @@ function Trans = umgTransmittance(Z_, Tair, Pressure, Lam, Co2_ppm, With_trace_g
     % Pre-allocate total optical depth
     Tau_total = zeros(Lam_length, 1);
     
+    % =========================================================================
+    % EFFICIENT DATA LOADING WITH MEMORY-OPTIMIZED LOADER
+    % =========================================================================
+    
     % Get absorption data using memory-optimized loader
     if isempty(Args.AbsData)
         % Load all UMG species at once for better I/O performance
@@ -68,16 +77,26 @@ function Trans = umgTransmittance(Z_, Tair, Pressure, Lam, Co2_ppm, With_trace_g
         Abs_data = Args.AbsData;
     end
     
+    % =========================================================================
+    % PRE-COMPUTE AIRMASS VALUES
+    % =========================================================================
+    
+    % Import airmass function
+    import transmission.utils.*
+    
     % Pre-compute all airmass values at once for better performance
-    Am_o2 = transmission.utils.airmassFromSMARTS(Z_, 'o2');
-    Am_ch4 = transmission.utils.airmassFromSMARTS(Z_, 'ch4');
-    Am_co = transmission.utils.airmassFromSMARTS(Z_, 'co');
-    Am_n2o = transmission.utils.airmassFromSMARTS(Z_, 'n2o');
-    Am_co2 = transmission.utils.airmassFromSMARTS(Z_, 'co2');
-    Am_n2 = transmission.utils.airmassFromSMARTS(Z_, 'n2');
+    Am_o2 = airmassFromSMARTS(Z_, 'o2');
+    Am_ch4 = airmassFromSMARTS(Z_, 'ch4');
+    Am_co = airmassFromSMARTS(Z_, 'co');
+    Am_n2o = airmassFromSMARTS(Z_, 'n2o');
+    Am_co2 = airmassFromSMARTS(Z_, 'co2');
+    Am_n2 = airmassFromSMARTS(Z_, 'n2');
     Am_o4 = Am_o2;  % O4 uses O2 airmass
     
-
+    % =========================================================================
+    % PRE-COMPUTE ABUNDANCE FACTORS
+    % =========================================================================
+    
     % Pre-compute all abundance factors (vectorized where possible)
     Abundance_o2 = 1.67766e5 * Pp0;
     Abundance_ch4 = 1.3255 * (Pp0 ^ 1.0574);
@@ -89,7 +108,7 @@ function Trans = umgTransmittance(Z_, Tair, Pressure, Lam, Co2_ppm, With_trace_g
     
     % =========================================================================
     % UNIFORMLY MIXED GASES PROCESSING
-    % Direct access to pre-loaded absorption data 
+    % Direct access to pre-loaded absorption data for maximum efficiency
     % =========================================================================
     
     % 1. Oxygen (O2)
@@ -148,11 +167,10 @@ function Trans = umgTransmittance(Z_, Tair, Pressure, Lam, Co2_ppm, With_trace_g
                 Log_pp0 = log(Pp0);
                 Nh3_abundance = exp(-8.6499 + 2.1947 * Log_pp0 - 2.5936 * (Log_pp0^2) - ...
                                    1.819 * (Log_pp0^3) - 0.65854 * (Log_pp0^4));
-                Am_nh3 = transmission.utils.airmassFromSMARTS(Z_, 'nh3');
+                Am_nh3 = airmassFromSMARTS(Z_, 'nh3');
                 Tau_total = Tau_total + Nh3_abs .* Nh3_abundance .* Am_nh3;
             catch ME
-                warning('transmission:umgTransmittance:nh3Failed', ...
-                        'NH3 trace gas calculation failed: %s', getReport(ME, 'basic'));
+                warning('NH3 trace gas calculation failed: %s', ME.message);
             end
         end
         
@@ -164,7 +182,7 @@ function Trans = umgTransmittance(Z_, Tair, Pressure, Lam, Co2_ppm, With_trace_g
     % =========================================================================
     
     % Calculate transmission and clip to [0,1]
-    Trans = exp(-Tau_total);
-    Trans = max(0, min(1, Trans));
+    transmission = exp(-Tau_total);
+    transmission = max(0, min(1, transmission));
 end
 
