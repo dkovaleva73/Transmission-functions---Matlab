@@ -1,4 +1,4 @@
-function Abs_data = loadAbsorptionDataMemoryOptimized(Data_path, Species, Verbose, Validate)
+function Abs_data = loadAbsorptionData(Data_path, Species, Verbose, Validate)
     % Load all molecular absorption data for atmospheric transmission
     % calculations (based on the SMARTS 2.9.5 model)
     % MEMORY OPTIMIZED VERSION: Enhanced for better memory layout and cache performance
@@ -21,14 +21,14 @@ function Abs_data = loadAbsorptionDataMemoryOptimized(Data_path, Species, Verbos
     %            (additional fields depend on species)
     % Author  : D. Kovaleva (July 2025)
     % Reference: Gueymard, C. A. (2019). Solar Energy, 187, 233-253.
-    % Example : Abs_data = transmission.data.loadAbsorptionDataMemoryOptimized();
+    % Example : Abs_data = transmission.data.loadAbsorptionData();
     %           Ozone_wavelength = abs_data.O3UV.wavelength;
     %           Ozone_absorption = abs_data.O3UV.absorption;
-    %           Abs_data = transmission.data.loadAbsorptionDataMemoryOptimized('/custom/path');
-    %           Abs_data = transmission.data.loadAbsorptionDataMemoryOptimized([], {'O3UV', 'H2O'});
-    %           Abs_data = transmission.data.loadAbsorptionDataMemoryOptimized([], {}, false);
-    %           Abs_data = transmission.data.loadAbsorptionDataMemoryOptimized('/custom/path', {'O3UV', 'H2O'});
-    %           Abs_data = transmission.data.loadAbsorptionDataMemoryOptimized([], {'O3UV', 'H2O'}, false, true);
+    %           Abs_data = transmission.data.loadAbsorptionData('/custom/path');
+    %           Abs_data = transmission.data.loadAbsorptionDatad([], {'O3UV', 'H2O'});
+    %           Abs_data = transmission.data.loadAbsorptionDatad([], {}, false);
+    %           Abs_data = transmission.data.loadAbsorptionData('/custom/path', {'O3UV', 'H2O'});
+    %           Abs_data = transmission.data.loadAbsorptionData([], {'O3UV', 'H2O'}, false, true);
     arguments
         Data_path = '/home/dana/matlab/data/transmission_fitter'
         Species = {}
@@ -141,7 +141,7 @@ function Abs_data = loadAbsorptionDataMemoryOptimized(Data_path, Species, Verbos
         
         try
             % Load species-specific data with memory optimizations
-            Species_data = loadSpeciesDataOptimized(Filepath, Species, Verbose_flag);
+            Species_data = loadSpeciesData(Filepath, Species, Verbose_flag);
             
             % Apply absorption coefficient corrections
             Species_data = applyAbsorptionCorrections(Species_data, Species);
@@ -192,29 +192,24 @@ function Abs_data = loadAbsorptionDataMemoryOptimized(Data_path, Species, Verbos
             fprintf('Validation: %d warnings, %d errors\n', val.warning_count, val.error_count);
         end
         
-        fprintf('\nMemory optimizations applied:\n');
-        fprintf('  • Enhanced memory layout for cache performance\n');
-        fprintf('  • Vectorized coefficient organization (where applicable)\n');
-        fprintf('  • Pre-computed lookup tables for repeated calculations\n');
-        
         fprintf('\nUsage examples:\n');
         fprintf('  %% Load all species (default):\n');
-        fprintf('  abs_data = transmission.data.loadAbsorptionDataMemoryOptimized();\n');
+        fprintf('  abs_data = transmission.data.loadAbsorptionData();\n');
         fprintf('  \n');
         fprintf('  %% Load specific species with default path:\n');
-        fprintf('  abs_data = transmission.data.loadAbsorptionDataMemoryOptimized([], {''O3UV'', ''H2O''});\n');
+        fprintf('  abs_data = transmission.data.loadAbsorptionData([], {''O3UV'', ''H2O''});\n');
         fprintf('  \n');
         fprintf('  %% Load specific species, silent mode:\n');
-        fprintf('  abs_data = transmission.data.loadAbsorptionDataMemoryOptimized([], {''BrO''}, false);\n');
+        fprintf('  abs_data = transmission.data.loadAbsorptionData([], {''BrO''}, false);\n');
         fprintf('  \n');
-        fprintf('  %% Access loaded data:\n');
+        fprintf('  %% Access loaded data:\n');NLOSCHMIDT
         fprintf('  ozone_data = abs_data.O3UV;\n');
         fprintf('  wavelength = ozone_data.wavelength;\n');
         fprintf('  absorption = ozone_data.absorption;\n');
     end
 end
 
-function Species_data = loadSpeciesDataOptimized(Filepath, Species, ~)
+function Species_data = loadSpeciesData(Filepath, Species, ~)
     % Load data for a specific molecular species with memory optimizations
     
     Species_data = struct();
@@ -230,7 +225,7 @@ function Species_data = loadSpeciesDataOptimized(Filepath, Species, ~)
     switch Species
         case {'H2O'}
             % Water vapor has complex multi-column format
-            Species_data = loadWaterVaporDataOptimized(Filepath, Species_data);
+            Species_data = loadWaterVaporData(Filepath, Species_data);
             
         case {'O3UV', 'O3IR'}
             % Ozone data (UV and IR bands)
@@ -256,28 +251,18 @@ function Species_data = loadSpeciesDataOptimized(Filepath, Species, ~)
     end
 end
 
-function Data = loadWaterVaporDataOptimized(Filepath, Data)
+function Data = loadWaterVaporData(Filepath, Data)
     % Load water vapor absorption data with multiple coefficients
-    % MEMORY OPTIMIZED: Enhanced for better memory access patterns
-    % Modified to match Python np.loadtxt behavior (removes NaN separator columns)
-    
-    % MEMORY OPTIMIZATION: Use readmatrix for better performance than readtable
-    % Read as numeric matrix and remove NaN separator columns to match Python np.loadtxt
+
     Raw_matrix = readmatrix(Filepath, 'FileType', 'text', 'Delimiter', '\t', 'NumHeaderLines', 1);
-    
-    % Remove NaN separator columns (columns 4, 9, 14, 19, 22) to match Python np.loadtxt
-    % Python np.loadtxt automatically skips these, resulting in 17 columns instead of 22
     keep_columns = [1:3, 5:8, 10:13, 15:18, 20:21]; % Skip columns 4, 9, 14, 19, 22
     Raw_data_clean = Raw_matrix(:, keep_columns);
-    
-    % MEMORY OPTIMIZATION: Store as contiguous arrays for better cache locality
-    % Extract basic wavelength and absorption (now matching Python column indices)
     Data.wavelength = Raw_data_clean(:, 1);        % Column 0 in Python
     Data.absorption = Raw_data_clean(:, 2);        % Column 1 in Python
     Data.band = Raw_data_clean(:, 3);              % Column 2 in Python
     
-    % Extract fitting coefficients (for advanced calculations)
-    % Column mapping now matches Python np.loadtxt exactly (17 columns total)
+    % Extract fitting coefficients 
+
     if size(Raw_data_clean, 2) >= 17
         Data.fit_coeffs = struct();
         Data.fit_coeffs.Ifitw = Raw_data_clean(:, 4);    % Column 3 in Python (was Var5)
@@ -327,16 +312,14 @@ function Data = loadGenericAbsorptionData(Filepath, Data)
 end
 
 function Species_data = optimizeMemoryLayout(Species_data, Species)
-    % MEMORY OPTIMIZATION: Apply memory layout optimizations for better cache performance
-    % Organize data structures for optimal memory access patterns
     
     switch Species
         case 'H2O'
-            % WATER VAPOR MEMORY OPTIMIZATION: Organize coefficients in matrices
+          
             if isfield(Species_data, 'fit_coeffs')
                 fit_coeffs = Species_data.fit_coeffs;
                 
-                % Organize fitting parameters as matrices for vectorized operations
+          
                 Species_data.ifitw = int32(fit_coeffs.Ifitw);                                    % Integer conversion
                 Species_data.Bw_coeffs = [fit_coeffs.Bwa0, fit_coeffs.Bwa1, fit_coeffs.Bwa2];  % 3-column matrix
                 
@@ -352,7 +335,7 @@ function Species_data = optimizeMemoryLayout(Species_data, Species)
                 Species_data.num_wavelengths = length(Species_data.wavelength);
                 Species_data.wavelength_range = [min(Species_data.wavelength), max(Species_data.wavelength)];
                 
-                % MEMORY OPTIMIZATION: Pre-compute band-specific reference water values (vectorized lookup)
+                % Pre-compute band-specific reference water values 
                 Species_data.pw0_lookup = computePw0Lookup(Species_data.band);
                 
                 % Keep original fit_coeffs for backward compatibility
@@ -464,13 +447,11 @@ function Species_data = applyAbsorptionCorrections(Species_data, Species)
                 B0 = Species_data.absorption(:, 2);
                 T_ref = 228.7;  % K
                 T0 = 220.0;     % K reference
-                NLOSCHMIDT = 2.6867811e19;  % cm-3, Loschmidt number
-                Species_data.absorption = NLOSCHMIDT * (Sigma + B0 * (T_ref - T0));
+                Species_data.absorption = constant.Loschmidt * (Sigma + B0 * (T_ref - T0));
                 Species_data.correction_applied = 'NO2_temperature_correction';
             else
                 % Apply Loschmidt scaling only
-                NLOSCHMIDT = 2.6867811e19;  % cm-3, Loschmidt number
-                Species_data.absorption = NLOSCHMIDT * Species_data.absorption;
+                Species_data.absorption = constant.Loschmidt * Species_data.absorption;
                 Species_data.correction_applied = 'NO2_loschmidt_scaling';
             end
             
@@ -481,19 +462,16 @@ function Species_data = applyAbsorptionCorrections(Species_data, Species)
                 B0 = Species_data.absorption(:, 2);
                 T_ref = 247.0;  % K
                 T0 = 213.0;     % K reference
-                NLOSCHMIDT = 2.6867811e19;  % cm-3, Loschmidt number
-                Species_data.absorption = NLOSCHMIDT * (Sigma + B0 * (T_ref - T0));
+                Species_data.absorption = constant.Loschmidt * (Sigma + B0 * (T_ref - T0));
                 Species_data.correction_applied = 'SO2U_temperature_correction';
             else
-                NLOSCHMIDT = 2.6867811e19;  % cm-3, Loschmidt number
-                Species_data.absorption = NLOSCHMIDT * Species_data.absorption;
+                Species_data.absorption = constant.Loschmidt * Species_data.absorption;
                 Species_data.correction_applied = 'SO2U_loschmidt_scaling';
             end
             
         case 'SO2I'
             % SO2I gets added to SO2U, but apply Loschmidt scaling
-            NLOSCHMIDT = 2.6867811e19;  % cm-3, Loschmidt number
-            Species_data.absorption = NLOSCHMIDT * Species_data.absorption;
+            Species_data.absorption = constant.Loschmidt * Species_data.absorption;
             Species_data.correction_applied = 'SO2I_loschmidt_scaling';
             
         case 'HNO3'
@@ -503,12 +481,10 @@ function Species_data = applyAbsorptionCorrections(Species_data, Species)
                 B0 = Species_data.absorption(:, 2);
                 T_ref = 234.2;  % K
                 T0 = 298.0;     % K reference
-                NLOSCHMIDT = 2.6867811e19;  % cm-3, Loschmidt number
-                Species_data.absorption = 1e-20 * NLOSCHMIDT * Xs .* exp(1e-3 * B0 * (T_ref - T0));
+                Species_data.absorption = 1e-20 * constant.Loschmidt * Xs .* exp(1e-3 * B0 * (T_ref - T0));
                 Species_data.correction_applied = 'HNO3_exponential_temperature_correction';
             else
-                NLOSCHMIDT = 2.6867811e19;  % cm-3, Loschmidt number
-                Species_data.absorption = 1e-20 * NLOSCHMIDT * Species_data.absorption;
+                Species_data.absorption = 1e-20 * constant.Loschmidt * Species_data.absorption;
                 Species_data.correction_applied = 'HNO3_scaling';
             end
             
@@ -519,19 +495,16 @@ function Species_data = applyAbsorptionCorrections(Species_data, Species)
                 B0 = Species_data.absorption(:, 2);
                 T_ref = 225.3;  % K
                 T0 = 230.0;     % K reference
-                NLOSCHMIDT = 2.6867811e19;  % cm-3, Loschmidt number
-                Species_data.absorption = NLOSCHMIDT * (Xs + B0 * (T_ref - T0));
+                Species_data.absorption = constant.Loschmidt * (Xs + B0 * (T_ref - T0));
                 Species_data.correction_applied = 'NO3_temperature_correction';
             else
-                NLOSCHMIDT = 2.6867811e19;  % cm-3, Loschmidt number
-                Species_data.absorption = NLOSCHMIDT * Species_data.absorption;
+                Species_data.absorption = constant.Loschmidt * Species_data.absorption;
                 Species_data.correction_applied = 'NO3_loschmidt_scaling';
             end
             
         case 'HNO2'
             % HNO2 Loschmidt scaling
-            NLOSCHMIDT = 2.6867811e19;  % cm-3, Loschmidt number
-            Species_data.absorption = NLOSCHMIDT * Species_data.absorption;
+            Species_data.absorption = constant.Loschmidt * Species_data.absorption;
             Species_data.correction_applied = 'HNO2_loschmidt_scaling';
             
         case 'CH2O'
@@ -541,21 +514,18 @@ function Species_data = applyAbsorptionCorrections(Species_data, Species)
                 B0 = Species_data.absorption(:, 2);
                 T_ref = 264.0;  % K
                 T0 = 293.0;     % K reference
-                NLOSCHMIDT = 2.6867811e19;  % cm-3, Loschmidt number
-                Species_data.absorption = NLOSCHMIDT * (Xs + B0 * (T_ref - T0));
+                Species_data.absorption = constant.Loschmidt * (Xs + B0 * (T_ref - T0));
                 Species_data.correction_applied = 'CH2O_temperature_correction';
             else
-                NLOSCHMIDT = 2.6867811e19;  % cm-3, Loschmidt number
-                Species_data.absorption = NLOSCHMIDT * Species_data.absorption;
+                Species_data.absorption = constant.Loschmidt * Species_data.absorption;
                 Species_data.correction_applied = 'CH2O_loschmidt_scaling';
             end
             
         case 'BrO'
             % BrO Loschmidt scaling
-            NLOSCHMIDT = 2.6867811e19;  % cm-3, Loschmidt number
-            Species_data.absorption = NLOSCHMIDT * Species_data.absorption;
+            Species_data.absorption = constant.Loschmidt * Species_data.absorption;
             Species_data.correction_applied = 'BrO_loschmidt_scaling';
-            
+       
         case 'ClNO'
             % ClNO quadratic temperature correction: xs*(1+b0*(T-T0)+b1*(T-T0)^2)
             if size(Species_data.absorption, 2) >= 3
@@ -565,19 +535,16 @@ function Species_data = applyAbsorptionCorrections(Species_data, Species)
                 T_ref = 230.0;  % K
                 T0 = 296.0;     % K reference
                 DT = T_ref - T0;
-                NLOSCHMIDT = 2.6867811e19;  % cm-3, Loschmidt number
-                Species_data.absorption = Xs * NLOSCHMIDT .* (1 + B0 * DT + B1 * DT^2);
+                Species_data.absorption = Xs * constant.Loschmidt .* (1 + B0 * DT + B1 * DT^2);
                 Species_data.correction_applied = 'ClNO_quadratic_temperature_correction';
             else
-                NLOSCHMIDT = 2.6867811e19;  % cm-3, Loschmidt number
-                Species_data.absorption = NLOSCHMIDT * Species_data.absorption;
+                Species_data.absorption = constant.Loschmidt * Species_data.absorption;
                 Species_data.correction_applied = 'ClNO_loschmidt_scaling';
             end
             
         case {'O3UV', 'O3IR'}
             % Ozone Loschmidt scaling
-            NLOSCHMIDT = 2.6867811e19;  % cm-3, Loschmidt number
-            Species_data.absorption = NLOSCHMIDT * Species_data.absorption;
+            Species_data.absorption = constant.Loschmidt * Species_data.absorption;
             Species_data.correction_applied = 'ozone_loschmidt_scaling';
             
         otherwise

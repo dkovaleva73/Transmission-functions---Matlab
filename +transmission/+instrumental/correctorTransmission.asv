@@ -7,7 +7,6 @@ function Trans_corrector = correctorTransmission(Lam, Degr, Ci)
     % Output :  - Trans_corrector (double array): Corrector transmission values (0-1)
     
     arguments
-        Data_path = '/home/dana/matlab/data/transmission_fitter'
         Lam = transmission.utils.makeWavelengthArray()
         Degr = 4
         Ci = 

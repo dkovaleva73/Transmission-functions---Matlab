@@ -45,7 +45,7 @@ function Trans = ozoneTransmission(Z_, Dobson_units, Lam, Args)
         % Load data if not provided (standalone usage)
         Abs_data = transmission.data.loadAbsorptionData([], {'O3UV'}, false);
     else
-        % Use pre-loaded data (efficient pipeline usage)
+        % Use pre-loaded data (pipeline usage)
         Abs_data = Args.AbsData;
     end
     

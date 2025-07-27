@@ -24,6 +24,17 @@ arguments
      Max_norm = 1
 end
     
+    % Validate wavelength bounds
+    if Min_wvl >= Max_wvl
+        error('transmission:normLambda:invalidBounds', ...
+              'Min_wvl must be less than Max_wvl');
+    end
+    if Min_wvl < min(Lam) || Max_wvl > max(Lam)
+        error('transmission:normLambda:boundsOutOfRange', ...
+              'Normalization bounds [%.1f, %.1f] exceed wavelength array range [%.1f, %.1f]', ...
+              Min_wvl, Max_wvl, min(Lam), max(Lam));
+    end
+    
     % Linear transformation to map [Min_wvl, Max_wvl] to [Min_norm, Max_norm]
     New_lambda = (Max_norm - Min_norm) ./ (Max_wvl - Min_wvl) .* (Lam - Max_wvl) + Max_norm;
 end

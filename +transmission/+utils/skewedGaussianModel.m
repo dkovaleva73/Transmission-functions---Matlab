@@ -5,9 +5,12 @@ function Sg_model = skewedGaussianModel(Lam, Amplitude, Center, Sigma, Gamma)
     %          - Center (double): Center wavelength in nm
     %          - Sigma (double): Width parameter
     %          - Gamma (double): Skewness parameter
-    %          Default: Ofek+23 (PASP 135, id.124502) best-fit CCD quantum efficiency parameters
     % Output : - Sg_model (double array): Skewed Gaussian values
     % Author : D. Kovaleva (Jul 2025)
+    % References: 1. Ofek et al. 2023, PASP 135, Issue 1054, id.124502 - 
+    %                best-fit CCD quantum efficiency parameters for
+    %                default values;
+    %             2. Garrappa et al. 2025, A&A 699, A50.
     % Example: % Basic usage with defaults (unit Gaussian at center=0)
     %          Sg = transmission.instrumental.skewedGaussianModel();
     %          % Custom skewed Gaussian (amplitude=100, center=600nm, width=50nm, skew=0.2)
