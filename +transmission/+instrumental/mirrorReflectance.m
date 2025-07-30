@@ -1,76 +1,55 @@
-function Ref_mirror = mirrorReflectance(Lam, Use_orig_xlt, R0, R1, R2, R3, R4)
-    % Calculate mirror reflectance from data files or polynomial coefficients
-    %
-    % Parameters:
-    %   Lam (double array): Wavelength array in nm
-    %   Use_orig_xlt (logical): Use original data file (true) or polynomial (false)
-    %   R0-R4 (double): Polynomial coefficients (used if Use_orig_xlt = false)
-    %
-    % Returns:
-    %   Ref_mirror (double array): Mirror reflectance values (0-1)
+function Ref_mirror = mirrorReflectance(Data_file, Lam, Args)
+    % Calculate mirror reflectance from (a) polynomial fitting of
+    % instrumental data or (b) linear interpolation of instrumental data
+    %  Input :  - Data_file - Custom path to data file
+    %                         (default: StarBrightXLT data, fixed)
+    %           - Lam (double array): Wavelength array in nm
+    %           - Degr (integer): degree of Legendre polynom
+    %  Output : - Ref_mirror (double array): Mirror reflectance values (0-1)
+    %          * ...,key,val,... 
+    %         'Meth' - 'polyfit_'|'piecewise_' (fitting and extrapolation by
+    %         2nd order polynom | piecewise linear interpolation and
+    %         extrapolation)
+    % Author : D. Kovaleva (Jul 2025)
+    % Reference:  Garrappa et al. 2025, A&A 699, A50.
+    % Example: % Basic usage with default StarBrightXLT data and polyfit method
+    %          Ref = transmission.instrumental.mirrorReflectance();
+    %          % Custom wavelength array
+    %          Lam = linspace(350, 950, 301)';
+    %          Ref = transmission.instrumental.mirrorReflectance([], Lam);
+    %          % Use piecewise linear interpolation instead of polyfit
+    %          Ref = transmission.instrumental.mirrorReflectance([], Lam, 'Meth', 'piecewise_');
+    %          % Custom mirror reflectance data file
+    %          Ref = transmission.instrumental.mirrorReflectance('/path/to/mirror_data.csv', Lam);
     
     arguments
-        Lam (:,1) double
-        Use_orig_xlt (1,1) logical = true
-        R0 (1,1) double = 0.0
-        R1 (1,1) double = 0.0
-        R2 (1,1) double = 0.0
-        R3 (1,1) double = 0.0
-        R4 (1,1) double = 0.0
+        Data_file = '/home/dana/matlab/data/transmission_fitter/StarBrightXLT_Mirror_Reflectivity.csv'
+        Lam = transmission.utils.makeWavelengthArray()
+        Args.Meth = 'polyfit_'
     end
     
-    if Use_orig_xlt
-        % Use original data file
-        Data_file = getDataFilePath('StarBrightXLT_Mirror_Reflectivity.csv');
+    % Handle empty Data_file argument
+    if isempty(Data_file)
+        Data_file = '/home/dana/matlab/data/transmission_fitter/StarBrightXLT_Mirror_Reflectivity.csv';
+    end
+    
+    if exist(Data_file, 'file')
+        Data = readmatrix(Data_file);
+        Mirror_wavelength = Data(:, 1);
+        Mirror_transmission = Data(:, 2) / 100;  % Convert percentage to fraction
         
-        if exist(Data_file, 'file')
-            % Read mirror reflectance data
-            Data = readmatrix(Data_file);
-            Mirror_wavelength = Data(:, 1);
-            Mirror_reflectance = Data(:, 2) / 100;  % Convert percentage to fraction
-            
-            % Interpolate to wavelength array
-            Ref_mirror = interp1(Mirror_wavelength, Mirror_reflectance, Lam, 'linear', 'extrap');
-        else
-            % Use alternative file if available
-            Alt_file = getDataFilePath('StarBrightXLT_Mirror_Reflectivity_ALTERNATIVE.csv');
-            if exist(Alt_file, 'file')
-                Data = readmatrix(Alt_file);
-                Mirror_wavelength = Data(:, 1);
-                Mirror_reflectance = Data(:, 2) / 100;  % Convert percentage to fraction
-                Ref_mirror = interp1(Mirror_wavelength, Mirror_reflectance, Lam, 'linear', 'extrap');
-            else
-                warning('Mirror reflectance data file not found, using default value 0.9');
-                Ref_mirror = 0.9 * ones(size(Lam));
-            end
-        end
+        % adjusting transmission function to wavelength array
+       if Args.Meth == 'polyfit_'
+          Ci = polyfit(Mirror_wavelength, Mirror_transmission,2);
+          Ref_mirror = polyval(Ci, Lam);
+       elseif Args.Meth == 'piecewise_'
+          Ref_mirror = interp1(Mirror_wavelength, Mirror_transmission, Lam, 'linear', 'extrap');
+       end    
     else
-        % Use polynomial coefficients
-        Ref_mirror = polyval([R4, R3, R2, R1, R0], Lam);
+        error('transmission:mirrorReflectance:fileNotFound', ...
+              'Mirror reflectance data file not found: %s', Data_file);
     end
-    
-    % Ensure values are in valid range [0, 1]
-    Ref_mirror = max(0, min(1, Ref_mirror));
 end
 
-function file_path = getDataFilePath(filename)
-    % Get the file path for instrumental data
-    
-    % Search locations
-    Possible_paths = {
-        sprintf('/home/dana/matlab/data_Transmission_Fitter/Templates/%s', filename), ...
-        sprintf('/home/dana/Documents/MATLAB/inwork/data/Templates/%s', filename), ...
-        sprintf('/home/dana/anaconda3/lib/python3.12/site-packages/transmission_fitter/data/Templates/%s', filename)
-    };
-    
-    file_path = '';
-    for I = 1:length(Possible_paths)
-        if exist(Possible_paths{I}, 'file')
-            file_path = Possible_paths{I};
-            return;
-        end
-    end
-    
-    % If not found, return the primary path for error handling
-    file_path = Possible_paths{1};
-end
+
+

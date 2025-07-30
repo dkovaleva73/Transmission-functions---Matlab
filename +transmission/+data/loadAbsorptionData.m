@@ -1,7 +1,6 @@
 function Abs_data = loadAbsorptionData(Data_path, Species, Verbose, Validate)
     % Load all molecular absorption data for atmospheric transmission
     % calculations (based on the SMARTS 2.9.5 model)
-    % MEMORY OPTIMIZED VERSION: Enhanced for better memory layout and cache performance
     % Input :   - Data_path - Custom path to absorption data files
     %                         (default: fixed)
     %           - Species   - Cell array of species to load (default: all available)
@@ -64,7 +63,6 @@ function Abs_data = loadAbsorptionData(Data_path, Species, Verbose, Validate)
     
     if Verbose_flag
         fprintf('Loading molecular absorption data from: %s\n', Data_path_resolved);
-        fprintf('Memory optimized version: Enhanced cache performance\n');
     end
     
     %% Define available molecular species and their file mappings
@@ -241,7 +239,7 @@ function Species_data = loadSpeciesData(Filepath, Species, ~)
         error('No data loaded from file');
     end
     
-    % MEMORY OPTIMIZATION: Ensure column vectors for cache-friendly access
+    % Ensure column vectors for cache-friendly access
     Species_data.wavelength = Species_data.wavelength(:);
     Species_data.absorption = Species_data.absorption(:);
     

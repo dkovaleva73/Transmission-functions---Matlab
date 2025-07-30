@@ -43,8 +43,8 @@ function Leg_model = legendreModel(Lam, Degr, Li, Min_wvl, Max_wvl)
     end
     
     % Transform wavelength to [-1, 1] range
-    New_lambda = transmission.utils.normLambda(Lam, Min_wvl, Max_wvl, -1.0, 1.0);
-    %New_lambda = transmission.utils.normLambda();
+    New_lambda = transmission.utils.rescaleInputData(Lam, Min_wvl, Max_wvl, -1.0, 1.0);
+    %New_lambda = transmission.utils.rescaleInputData();
 
     % Calculate Legendre polynomials (using MATLAB's legendre function)
     % Note: MATLAB's legendre function uses different normalization

@@ -1,19 +1,23 @@
-function Trans_corrector = correctorTransmission(Lam, Degr, Ci)
-    % Calculate corrector transmission from polynomial coefficients
-    %
-    % Inputs :  - Lam (double array): Wavelength array in nm
+function Trans_corrector = correctorTransmission(Data_file, Lam, Args)
+    %  Calculate corrector transmission from instrumental data and
+    %  polynomial fitting 
+    %  Input :  - Data_file - Custom path to data file
+    %                         (default: StarBrightXLT data, fixed)
+    %           - Lam (double array): Wavelength array in nm
     %           - Degr (integer): degree of Legendre polynom
-    %           - Ci (double array): Polynomial coefficients, length(Ci)=Degr+1
-    % Output :  - Trans_corrector (double array): Corrector transmission values (0-1)
+    %  Output : - Trans_corrector (double array): Corrector transmission values (0-1)
+    %          * ...,key,val,... 
+    %         'Meth' - 'polyfit'|'piecewise' (fitting and extrapolation by
+    %         2nd order polynom | piecewise linear approximation and
+    %         extrapolation)
+    % Author : D. Kovaleva (Jul 2025)
+    % Reference:  Garrappa et al. 2025, A&A 699, A50.
     
     arguments
+        Data_file = '/home/dana/matlab/data/transmission_fitter/StarBrightXLT_Corrector_Trasmission.csv'
         Lam = transmission.utils.makeWavelengthArray()
-        Degr = 4
-        Ci = 
+        Args.Meth = 'polyfit'
     end
-    
-    % Try to read from data file first
-    Data_file = getDataFilePath('StarBrightXLT_Corrector_Trasmission.csv');
     
     if exist(Data_file, 'file')
         % Read corrector transmission data
@@ -21,38 +25,13 @@ function Trans_corrector = correctorTransmission(Lam, Degr, Ci)
         Corrector_wavelength = Data(:, 1);
         Corrector_transmission = Data(:, 2) / 100;  % Convert percentage to fraction
         
-        % Interpolate to wavelength array
-        Trans_corrector = interp1(Corrector_wavelength, Corrector_transmission, Lam, 'linear', 'extrap');
-    else
-        % Use polynomial coefficients as fallback
-        if any([C0, C1, C2, C3, C4] ~= 0)
-            Trans_corrector = polyval([C4, C3, C2, C1, C0], Lam);
-        else
-            warning('Corrector transmission data file not found and no coefficients provided, using default value 0.95');
-            Trans_corrector = 0.95 * ones(size(Lam));
-        end
-    end
-    
-end
+        % adjusting transmission function to wavelength array
+    if Args.Meth='polyfit':
 
-function file_path = getDataFilePath(filename)
-    % Get the file path for instrumental data
-    
-    % Search locations
-    Possible_paths = {
-        sprintf('/home/dana/matlab/data_Transmission_Fitter/Templates/%s', filename), ...
-        sprintf('/home/dana/Documents/MATLAB/inwork/data/Templates/%s', filename), ...
-        sprintf('/home/dana/anaconda3/lib/python3.12/site-packages/transmission_fitter/data/Templates/%s', filename)
-    };
-    
-    file_path = '';
-    for I = 1:length(Possible_paths)
-        if exist(Possible_paths{I}, 'file')
-            file_path = Possible_paths{I};
-            return;
-        end
+    elseif Args.Meth='piecewise':
+       Trans_corrector = interp1(Corrector_wavelength, Corrector_transmission, Lam, Args.Meth, 'extrap');
+
+    end    
+        
     end
     
-    % If not found, return the primary path for error handling
-    file_path = Possible_paths{1};
-end
