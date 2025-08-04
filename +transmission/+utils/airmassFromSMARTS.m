@@ -1,18 +1,26 @@
-function Airmass = airmassFromSMARTS(Z_, Constituent)
+function Airmass = airmassFromSMARTS(Constituent, Config)
     % Calculate the airmass using SMARTS2.9.5 tabulated values.
-    % Input:   - Z_ (double): The zenith angle in degrees.
-    %          - Constituent (char): The atmospheric constituent. Default is 'rayleigh'.
+    % Input:   - Constituent (char): The atmospheric constituent. Default is 'rayleigh'.
     %            Constituents available are: 'rayleigh'; 'aerosol'; 'o3'/'ozone';
     %            'h2o'/'water'; 'o2'; 'ch4'; 'co'; 'n2o'; 'co2'; 'n2'; 'hno3';
     %            'no2'; 'no'; 'so2'; 'nh3'.
+    %          - Config (struct): Configuration struct from inputConfig()
+    %            Uses Config.Atmospheric.Zenith_angle_deg
     % Output:  - Airmass (double): The calculated airmass.
     % Reference: Gueymard, C. A. (2019). Solar Energy, 187, 233-253.
     % Author:    D. Kovaleva (July 2025).
-    % Example:   Am_ = transmission.utils.airmassFromSMARTS(Z_, 'rayleigh');
+    % Example:   Config = transmission.inputConfig('default');
+    %            Am_ = transmission.utils.airmassFromSMARTS('rayleigh', Config);
+    %            % Custom zenith angle:
+    %            Config.Atmospheric.Zenith_angle_deg = 45;
+    %            Am_ = transmission.utils.airmassFromSMARTS('ozone', Config);
     arguments
-        Z_
-        Constituent = 'rayleigh';
+        Constituent = 'rayleigh'
+        Config = transmission.inputConfig()
     end
+    
+    % Extract zenith angle from Config
+    Z_ = Config.Atmospheric.Zenith_angle_deg;
     % Checkup for zenith angle value correctness
     if Z_ > 90 || Z_ < 0
         error('Zenith angle out of range [0, 90] deg');

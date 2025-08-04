@@ -1,31 +1,31 @@
-function Trans = waterTransmittance(Z_, Pw_, Pressure, Lam, Args)
+function Trans = waterTransmittance(Lam, Config)
     % Water vapor transmission of the Earth atmosphere. SMARTS 2.9.5 model implementation 
-    % Input :  - Z_ (double): The zenith angle in degrees.
-    %          - Pw_ (double): The precipitable water in cm.
-    %          - Pressure (double): The atmospheric pressure in mbar.
-    %          - Lam (double array): Wavelength array (by default, in nm).
-    %          - Abs_data (struct, optional): Pre-loaded absorption data from loadAbsorptionData()
-    %          * ...,key,val,...
-    %             'WaveUnits' -  'A','Ang'|'nm'
-    %             'AbsData' - Pre-loaded absorption data structure
+    % Input :  - Lam (double array): Wavelength array.
+    %          - Config (struct): Configuration struct from inputConfig()
+    %            Uses Config.Atmospheric.Zenith_angle_deg
+    %            Uses Config.Atmospheric.Components.Water.Pwv_cm
+    %            Uses Config.Atmospheric.Pressure_mbar
+    %            Uses Config.Data.Wave_units
     % Output : - Trans (double array): The calculated transmission values (0-1).
     % Reference: Gueymard, C. A. (2019). Solar Energy, 187, 233-253.
     % Author : D. Kovaleva (Jul 2025) 
-    % Example: % Standalone usage:
-    %          Lam = transmission.utils.makeWavelengthArray();
-    %          Trans = transmission.atmospheric.waterTransmittance(30, 2.5, 1013.25, Lam);
-    %          % Pipeline usage (RECOMMENDED for best performance):
-    %          Abs_data = transmission.data.loadAbsorptionData();
-    %          Trans = transmission.atmospheric.waterTransmittance(30, 2.5, 1013.25, Lam, 'AbsData', Abs_data);
+    % Example: Config = transmission.inputConfig('default');
+    %          Lam = transmission.utils.makeWavelengthArray(Config);
+    %          Trans = transmission.atmospheric.waterTransmittance(Lam, Config);
+    %          % Custom water vapor:
+    %          Config.Atmospheric.Components.Water.Pwv_cm = 2.5;
+    %          Trans = transmission.atmospheric.waterTransmittance(Lam, Config);
 
     arguments
-        Z_
-        Pw_
-        Pressure
-        Lam
-        Args.WaveUnits = 'nm';
-        Args.AbsData = [];
+        Lam = transmission.utils.makeWavelengthArray(transmission.inputConfig())
+        Config = transmission.inputConfig()
     end
+    
+    % Extract parameters from Config
+    Z_ = Config.Atmospheric.Zenith_angle_deg;
+    Pw_ = Config.Atmospheric.Components.Water.Pwv_cm;
+    Pressure = Config.Atmospheric.Pressure_mbar;
+    WaveUnits = Config.Data.Wave_units;
 
     % Input validation: critical physics bounds only
     if Z_ < 0 || Z_ > 90
@@ -38,12 +38,8 @@ function Trans = waterTransmittance(Z_, Pw_, Pressure, Lam, Args)
         error('transmission:waterTransmission:invalidPressure', 'Pressure must be positive');  
     end
 
-    % Get water vapor absorption data
-    if isempty(Args.AbsData)
-        Abs_data = transmission.data.loadAbsorptionData([], {'H2O'}, false);
-    else
-        Abs_data = Args.AbsData;
-    end
+    % Load water vapor absorption data using dedicated module
+    Abs_data = transmission.data.loadAbsorptionData([], {'H2O'}, false);
 
     % Direct data extraction with error handling
     if ~isfield(Abs_data, 'H2O')
@@ -91,7 +87,7 @@ function Trans = waterTransmittance(Z_, Pw_, Pressure, Lam, Args)
     end
 
     % Calculate airmass using SMARTS coefficients
-    Am_ = transmission.utils.airmassFromSMARTS(Z_, 'h2o');
+    Am_ = transmission.utils.airmassFromSMARTS('h2o', Config);
 
     % =========================================================================
     % INLINED Bw CALCULATION. Use pre-computed pw0 lookup if available
@@ -292,7 +288,7 @@ function Trans = waterTransmittance(Z_, Pw_, Pressure, Lam, Args)
 
     % Transmission calculation with bounds 
     Trans = exp(-Tauw_l_interp);
-    Trans = max(0, min(1, Trans));
+    % No clipping to preserve error detection
 
     % =========================================================================
 end

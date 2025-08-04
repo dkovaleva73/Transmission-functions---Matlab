@@ -18,7 +18,7 @@ function Abs_data = loadAbsorptionData(Data_path, Species, Verbose, Validate)
     %          - .Species.filename   - Source filename
     %          - .Species.loaded     - Loading timestamp
     %            (additional fields depend on species)
-    % Author  : D. Kovaleva (July 2025)
+    % Author  : D. Kovaleva (Jul 2025)
     % Reference: Gueymard, C. A. (2019). Solar Energy, 187, 233-253.
     % Example : Abs_data = transmission.data.loadAbsorptionData();
     %           Ozone_wavelength = abs_data.O3UV.wavelength;
@@ -49,10 +49,10 @@ function Abs_data = loadAbsorptionData(Data_path, Species, Verbose, Validate)
     %% Initialize output structure
     % MEMORY OPTIMIZATION: Pre-allocate structure fields for better memory layout
     Abs_data = struct();
-    Abs_data.metadata = struct();
-    Abs_data.metadata.loaded = datetime('now');
-    Abs_data.metadata.loader_version = '2.0_memory_optimized';
-    Abs_data.metadata.optimization = 'memory_layout_enhanced';
+%    Abs_data.metadata = struct();
+%    Abs_data.metadata.loaded = datetime('now');
+%    Abs_data.metadata.loader_version = '2.0_memory_optimized';
+%    Abs_data.metadata.optimization = 'memory_layout_enhanced';
     
     %% Validate data path exists
     if ~exist(Data_path_resolved, 'dir')
@@ -241,11 +241,22 @@ function Species_data = loadSpeciesData(Filepath, Species, ~)
     
     % Ensure column vectors for cache-friendly access
     Species_data.wavelength = Species_data.wavelength(:);
-    Species_data.absorption = Species_data.absorption(:);
+    % Keep absorption as-is if multi-column (temperature coefficients)
+    if size(Species_data.absorption, 2) == 1
+        Species_data.absorption = Species_data.absorption(:);
+    end
     
     % Check for matching lengths
-    if length(Species_data.wavelength) ~= length(Species_data.absorption)
-        error('Wavelength and absorption arrays have different lengths');
+    if size(Species_data.absorption, 2) > 1
+        % Multi-column data
+        if length(Species_data.wavelength) ~= size(Species_data.absorption, 1)
+            error('Wavelength and absorption arrays have different lengths');
+        end
+    else
+        % Single column data  
+        if length(Species_data.wavelength) ~= length(Species_data.absorption)
+            error('Wavelength and absorption arrays have different lengths');
+        end
     end
 end
 
@@ -299,14 +310,30 @@ function Data = loadOzoneData(Filepath, Data)
 end
 
 function Data = loadGenericAbsorptionData(Filepath, Data)
-    % Load generic 2-column absorption data
+    % Load generic absorption data (supports multi-column for temperature coefficients)
     
-    Raw_data = readtable(Filepath, 'Delimiter', '\t', 'ReadVariableNames', false);
+    % Try to read with headers first to understand the file structure
+    try
+        Raw_data_with_headers = readtable(Filepath, 'Delimiter', '\t', 'ReadVariableNames', true);
+        num_cols = width(Raw_data_with_headers);
+    catch
+        num_cols = 2;  % Default to 2 columns if header reading fails
+    end
     
-    Data.wavelength = Raw_data.Var1;     % nm
-    Data.absorption = Raw_data.Var2;     % absorption coefficient/cross-section
+    % Read the actual data
+    Raw_data = readmatrix(Filepath, 'FileType', 'text', 'Delimiter', '\t', 'NumHeaderLines', 1);
+    
+    Data.wavelength = Raw_data(:, 1);     % nm
+    
+    % Handle multi-column data (e.g., temperature coefficients)
+    if size(Raw_data, 2) > 1
+        Data.absorption = Raw_data(:, 2:end);  % Keep all data columns
+    else
+        Data.absorption = Raw_data(:, 2);      % Single absorption column
+    end
     
     Data.format = 'generic';
+    Data.num_columns = size(Data.absorption, 2);
 end
 
 function Species_data = optimizeMemoryLayout(Species_data, Species)

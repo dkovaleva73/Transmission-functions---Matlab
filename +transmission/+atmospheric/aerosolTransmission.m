@@ -1,25 +1,32 @@
-function Transm = aerosolTransmission(Z_, Tau_aod500, Alpha, Lam, Args)
+function Transm = aerosolTransmission(Lam, Config)
     % Approximate Aerosol transmission of the Earth atmosphere as a
     % function of zenith angle, aerosol optical depth, Angstrom's exponent 
     % and wavelength.
-    % Input :   - Z_ (double): The zenith angle in degrees.
-    %           - Tau_aod500 (double): The aerosol optical depth at 500nm.
-    %           - Alpha (double): The Angstrom exponent.
-    %           - Lam (double array): Wavelength array (by default, in nm).
-    %           * ...,key,val,...
-    %           'WaveUnits' -  'A','Ang'|'nm'
+    % Input :   - Lam (double array): Wavelength array.
+    %           - Config (struct): Configuration struct from inputConfig()
+    %             Uses Config.Atmospheric.Zenith_angle_deg
+    %             Uses Config.Atmospheric.Components.Aerosol.Tau_aod500
+    %             Uses Config.Atmospheric.Components.Aerosol.Angstrom_exponent
+    %             Uses Config.Data.Wave_units
     % Output :  - Transm (double array): The calculated transmission values (0-1).
     % Reference: Gueymard, C. A. (2019). Solar Energy, 187, 233-253.
     % Author  :  D. Kovaleva (July 2025).
-    % Example :  Lam = transmission.utils.make_wavelength_array();
-    %            Trans = transmission.atmospheric.aerosolTransmission(45, 0.1, 1.3, Lam);    
+    % Example :  Config = transmission.inputConfig('default');
+    %            Lam = transmission.utils.makeWavelengthArray(Config);
+    %            Trans = transmission.atmospheric.aerosolTransmission(Lam, Config);
+    %            % Custom AOD:
+    %            Config.Atmospheric.Components.Aerosol.Tau_aod500 = 0.1;
+    %            Trans = transmission.atmospheric.aerosolTransmission(Lam, Config);    
     arguments
-        Z_
-        Tau_aod500 
-        Alpha      
-        Lam
-        Args.WaveUnits  = 'nm';
-    end  
+        Lam = transmission.utils.makeWavelengthArray(transmission.inputConfig())
+        Config = transmission.inputConfig()
+    end
+    
+    % Extract parameters from Config
+    Z_ = Config.Atmospheric.Zenith_angle_deg;
+    Tau_aod500 = Config.Atmospheric.Components.Aerosol.Tau_aod500;
+    Alpha = Config.Atmospheric.Components.Aerosol.Angstrom_exponent;
+    WaveUnits = Config.Data.Wave_units;  
     
     % Checkup for zenith angle value correctness
     if Z_ > 90 || Z_ < 0
@@ -27,15 +34,14 @@ function Transm = aerosolTransmission(Z_, Tau_aod500, Alpha, Lam, Args)
     end
 
     % Calculate airmass using SMARTS coefficients for aerosol, Gueymard, C. A. (2019) 
-    Am_ = transmission.utils.airmassFromSMARTS(Z_, 'aerosol');
+    Am_ = transmission.utils.airmassFromSMARTS('aerosol', Config);
 
     % Convert wavelength to Angstrom
     %  LamAng = convert.energy(Args.WaveUnits,'Ang',Lam);
 
     % Calculate aerosol optical depth using AstroPack aerosolScattering
-    Tau_lambda = astro.atmosphere.aerosolScattering(Lam, Tau_aod500, Alpha, Args.WaveUnits);
+    Tau_lambda = astro.atmosphere.aerosolScattering(Lam, Tau_aod500, Alpha, WaveUnits);
 
-    % Calculate transmission and clip to [0,1]
+    % Calculate transmission (no clipping to preserve error detection)
     Transm = exp(-Am_ .* Tau_lambda);
-    Transm = max(0, min(1, Transm));
 end
