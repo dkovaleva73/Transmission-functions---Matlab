@@ -27,9 +27,9 @@ function Config = inputConfig(scenario)
     
     % 1. GENERAL SETTINGS
     Config.General = struct(...
-        'Wavelength_min', 300, ...       % nm (optical astronomy range)
-        'Wavelength_max', 1100, ...      % nm
-        'Wavelength_points', 401, ...    % number of points (~2nm resolution)
+        'Wavelength_min', 300, ... %336, ...       % nm (optical astronomy range)
+        'Wavelength_max', 1100, ...%1020, ...      % nm
+        'Wavelength_points', 401, ...%343, ...    % number of points (~2nm resolution)
         'Enable_atmospheric', true, ...
         'Enable_instrumental', true ...
     );
@@ -58,13 +58,14 @@ function Config = inputConfig(scenario)
             'Default_center', 570.973, ... % nm
             'Default_sigma', 139.77, ...  % nm
             'Default_gamma', -0.1517 ...  % Skewness parameter
-        ) ...
+        ), ...
+        'Gaia_wavelength', 336:2:1020 ... % Gaia XP wavelength grid: 336-1020 nm in 2 nm steps (343 points)
     );
-    
+
     % 2. ATMOSPHERIC TRANSMISSION
     Config.Atmospheric = struct(...
         'Enable', true, ...
-        'Zenith_angle_deg', 60.0, ...     % Zenith angle (0=zenith, airmass calculated via airmassFromSMARTS)
+        'Zenith_angle_deg', 0.0, ...     % Zenith angle (0=zenith, airmass calculated via airmassFromSMARTS)
         'Pressure_mbar', 1013.25, ...    % Atmospheric pressure (mbar)
         'Temperature_C', 15.0, ...       % Air temperature (°C)
         'Components', struct(...
@@ -136,7 +137,7 @@ function Config = inputConfig(scenario)
     
     % 5. DISPLAY AND OUTPUT SETTINGS
     Config.Utils.Display = struct(...
-        'Show_summary', true, ...        % Display transmission summary
+        'Show_summary', false, ...        % Display transmission summary
         'Show_plots', false ...          % Generate plots when no output requested
     );
     
