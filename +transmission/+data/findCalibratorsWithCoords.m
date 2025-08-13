@@ -31,9 +31,11 @@ function [Spec, Mag, Coords, LASTData, Metadata] = findCalibratorsWithCoords(Cat
     
     arguments
     %    CatFile = "/home/dana/matlab/data/transmission_fitter/LASTfiles/LAST.01.10.04_20240311.193844.471_clear_923_000_001_001_sci_coadd_Cat_1.fits";
-         CatFile = "/home/dana/matlab/data/transmission_fitter/LASTfiles/LAST.01.08.03_20230616.222625.384_clear_346+79_000_001_001_sci_coadd_Cat_1.fits";
-    %     CatFile = "/home/dana/matlab/data/transmission_fitter/LASTfiles/LAST.01.10.04_20240311.194154.510_clear_923_010_001_004_sci_proc_Cat_1.fits"
-        SearchRadius = 1 % arcsec
+    %    CatFile = "/home/dana/matlab/data/transmission_fitter/LASTfiles/LAST.01.08.03_20230616.222625.384_clear_346+79_000_001_001_sci_coadd_Cat_1.fits";
+        CatFile = "/home/dana/matlab/data/transmission_fitter/LASTfiles/LAST.01.10.04_20240311.194154.510_clear_923_010_001_004_sci_proc_Cat_1.fits"
+    %%%% CatFile = "/home/dana/matlab/data/transmission_fitter/LASTfiles/LAST.01.10.04_20240311.194154.510_clear_923_010_001_016_sci_proc_Cat_1.fits"
+    %/transmission_fitter/data/Image_Test/Stability_Single/LAST.01.10.04_20240303.191215.553_clear_923_001_001_016_sci_proc_Cat_1.fits
+    SearchRadius = 1 % arcsec
     end
  tic
 %for klm=1:10    
@@ -70,8 +72,9 @@ function [Spec, Mag, Coords, LASTData, Metadata] = findCalibratorsWithCoords(Cat
     
     for i = 1 : Nsrc
         [Sp,~,~,D] = catsHTM.cone_search('GAIADR3spec', Tab.RA(i)./RAD, Tab.Dec(i)./RAD, SearchRadius);
-        
-        if D > 0
+  %      Sp = catsHTM.sources_match('GAIADR3spec', AC);%, 'Args.SearchRadius', SearchRadius, 'Args.ColRA', Tab.RA(i)./RAD, 'Args.ColDec', Tab.Dec(i)./RAD);
+  %   Sp = catsHTM.search_htm_ind('GAIADR3spec_htm.hdf5', Tab, Tab.RA(i)./RAD, Tab.Dec(i)./RAD, SearchRadius);
+       if D > 0
             matchCount = matchCount + 1;
             
             % Extract spectra

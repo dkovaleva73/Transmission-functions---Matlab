@@ -53,6 +53,20 @@ Lam = transmission.utils.makeWavelengthArray(Config);
 Total = transmission.totalTransmission(Lam, Config);
 ```
 
+### `transmission.calibrators.*` - Calibrator Processing
+Functions for processing astronomical calibrators and calculating transmitted flux.
+
+```matlab
+% Find Gaia calibrators around LAST sources
+[Spec, Mag, Coords, LASTData, Metadata] = transmission.data.findCalibratorsWithCoords();
+
+% Apply transmission to calibrator spectra
+[SpecTrans, Wavelength, TransFunc] = transmission.calibrators.applyTransmissionToCalibrators(Spec, Metadata);
+
+% Calculate total flux in photons
+totalFlux = transmission.calibrators.calculateTotalFluxCalibrators(Wavelength, SpecTrans, Metadata);
+```
+
 ## Package Structure
 
 ```
@@ -70,12 +84,21 @@ Total = transmission.totalTransmission(Lam, Config);
 │   ├── rayleighTransmission.m      % Rayleigh scattering
 │   ├── aerosolTransmission.m       % Aerosol extinction
 │   ├── ozoneTransmission.m         % Ozone absorption
-│   └── waterTransmittance.m        % Water vapor absorption
+│   ├── waterTransmittance.m        % Water vapor absorption
+│   └── umgTransmittance.m          % Uniformly Mixed Gas transmission
+├── +calibrators/                    % Calibrator processing
+│   ├── applyTransmissionToCalibrators.m   % Apply transmission to Gaia spectra
+│   └── calculateTotalFluxCalibrators.m    % Calculate total flux in photons
+├── +data/                          % Data handling and catalog processing
+│   ├── findCalibratorsWithCoords.m % Find Gaia calibrators around LAST sources
+│   └── loadAbsorptionData.m        % Load molecular absorption data
 ├── +utils/                         % Utility functions
 │   ├── makeWavelengthArray.m       % Wavelength array generation
-│   ├── skewedGaussianModel.m       % Skewed Gaussian model (CORRECTED)
+│   ├── skewedGaussianModel.m       % Skewed Gaussian model
 │   ├── legendreModel.m             % Legendre polynomial model
-│   └── rescaleInputData.m          % Data rescaling utilities
+│   ├── chebyshevModel.m            % Chebyshev polynomial model
+│   ├── rescaleInputData.m          % Data rescaling utilities
+│   └── airmassFromSMARTS.m         % Airmass calculation from SMARTS
 └── examples/
     └── totalTransmissionDemo.m      % Complete demonstration
 ```
@@ -104,6 +127,12 @@ Total = transmission.totalTransmission(Lam, Config);
 - Predefined scenarios: `default`, `photometric_night`, `humid_conditions`, `high_altitude`, etc.
 - Centralized parameter management
 - Easy customization
+
+### ✅ Calibrator Processing Pipeline
+- Cross-matching LAST catalog sources with Gaia DR3 spectra
+- Automatic magnitude filtering and duplicate removal
+- Transmission application to Gaia spectra (336-1020 nm → 300-1100 nm)
+- Total flux calculation in photons following Garrappa et al. 2025 methodology
 
 ## Configuration Scenarios
 
