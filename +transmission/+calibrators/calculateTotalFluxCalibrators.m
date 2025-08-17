@@ -17,7 +17,7 @@ function totalFlux = calculateTotalFluxCalibrators(Wavelength, TransmittedFlux, 
     
     arguments
         Wavelength double = transmission.utils.makeWavelengthArray(transmission.inputConfig())  % nm 
-        TransmittedFlux double = []                   % Transmitted flux spectrum (flux * transmission already applied)
+        TransmittedFlux double = []                   % Transmitted flux spectrum (flux * transmission already applied) - double array [Nspec x Nwavelength]
         Metadata = []                                 % Metadata structure from findCalibratorsWithCoords
         Args.dt = NaN                          % Time interval (seconds)
         Args.Ageom double = pi * (0.1397^2)           % Geometric area (m²) - LAST telescope aperture
@@ -58,44 +58,34 @@ function totalFlux = calculateTotalFluxCalibrators(Wavelength, TransmittedFlux, 
   %  disp(C);
   % Convert wavelength from nm to cm for calculation
      
-    % Handle both single spectrum (array) and multiple spectra (cell array)
-    if iscell(TransmittedFlux)
-        % Multiple spectra - process each one
-        Nspectra = size(TransmittedFlux, 1);
-        totalFlux = repmat(0, Nspectra, 1);%#ok<*RPMT0>
-        
-        for i = 1 : Nspectra
-            % Calculate the integrand: transmitted_flux * wavelength (in meters)
-            % (transmission already applied in applyTransmissionToCalibrators)
-            Integrand = TransmittedFlux{i,1} .* Wavelength;
-   %         disp(Integrand);
-            
-            % Integrate using trapezoidal rule 
-            A = trapz(Wavelength, Integrand);
-    %        disp(A);
-            
-            % Calculate normalization factor (nanometers to meters)
-            B = H * C * 1e9;
-    %        disp(B);
-            % Calculate total flux in photons. Normalization ~ 0.5 to fit
-            % the scale
-            totalFlux(i) = 0.5* Dt * Args.Ageom * A / B;
-        end
-    else
-        % Single spectrum - process as before
-        % Calculate the integrand: transmitted_flux * wavelength (in meters)
+    % Handle multiple spectra (double array [Nspec x Nwavelength])
+    if isempty(TransmittedFlux)
+        totalFlux = [];
+        return;
+    end
+    
+    % Ensure TransmittedFlux is 2D
+    if isvector(TransmittedFlux)
+        TransmittedFlux = TransmittedFlux(:)'; % Row vector for single spectrum
+    end
+    
+    Nspectra = size(TransmittedFlux, 1);
+    totalFlux = zeros(Nspectra, 1);
+    
+    % Calculate flux for each spectrum
+    for i = 1:Nspectra
+        % Calculate the integrand: transmitted_flux * wavelength (in nm)
         % (transmission already applied in applyTransmissionToCalibrators)
-        Integrand = TransmittedFlux .* Wavelength;
+        Integrand = TransmittedFlux(i, :) .* Wavelength(:)';
         
-        % Integrate using trapezoidal rule (equivalent to scipy.integrate.trapz)
+        % Integrate using trapezoidal rule 
         A = trapz(Wavelength, Integrand);
         
         % Calculate normalization factor (nanometers to meters)
-        B = H * C *1e9;
+        B = H * C * 1e9;
         
-        % Calculate total flux in photons. Normalization ~ 0.5 to fit the
-        % scale.
-        totalFlux =  0.5 * Dt * Args.Ageom * A / B;
+        % Calculate total flux in photons
+        totalFlux(i) = 0.5 * Dt * Args.Ageom * A / B;
     end
 % toc   
 end

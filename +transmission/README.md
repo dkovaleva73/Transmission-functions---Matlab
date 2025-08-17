@@ -53,8 +53,23 @@ Lam = transmission.utils.makeWavelengthArray(Config);
 Total = transmission.totalTransmission(Lam, Config);
 ```
 
-### `transmission.calibrators.*` - Calibrator Processing
-Functions for processing astronomical calibrators and calculating transmitted flux.
+### `transmission.calibratorWorkflow()` - Complete Calibrator Pipeline
+One-stop function that performs the complete calibrator processing workflow.
+
+```matlab
+% Basic usage with defaults
+totalFlux = transmission.calibratorWorkflow();
+
+% With custom configuration and plotting
+Config = transmission.inputConfig('photometric_night');
+[totalFlux, SpecTrans, Wavelength, Metadata, Results] = transmission.calibratorWorkflow(Config, 'PlotResults', true);
+
+% Override catalog file and save results
+totalFlux = transmission.calibratorWorkflow([], 'CatalogFile', '/path/to/catalog.fits', 'SaveResults', true);
+```
+
+### `transmission.calibrators.*` - Individual Calibrator Functions
+Step-by-step functions for custom calibrator processing workflows.
 
 ```matlab
 % Find Gaia calibrators around LAST sources
@@ -72,6 +87,7 @@ totalFlux = transmission.calibrators.calculateTotalFluxCalibrators(Wavelength, S
 ```
 +transmission/
 ├── totalTransmission.m              % Core total transmission
+├── calibratorWorkflow.m             % Complete calibrator processing pipeline
 ├── inputConfig.m                    % Configuration management
 ├── +instrumental/                   % Instrumental components
 │   ├── otaTransmission.m           % Complete OTA transmission
@@ -102,6 +118,20 @@ totalFlux = transmission.calibrators.calculateTotalFluxCalibrators(Wavelength, S
 └── examples/
     └── totalTransmissionDemo.m      % Complete demonstration
 ```
+VO.search
+improc.match
+profview - profiler time of work
+dnd
+fmeansearch
+
+handles, parameters
+set, free - input for minimizator
+xy minimization - lineary 
+linearization for other 3? 
+
+simplex method
+convex
+
 
 ## Key Features
 

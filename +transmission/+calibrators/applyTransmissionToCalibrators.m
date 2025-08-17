@@ -46,6 +46,7 @@ function [SpecTrans, Wavelength, TransFunc] = applyTransmissionToCalibrators(Spe
 
     ZenithAngle = acosd(1/Metadata.airMassFromLAST); 
     Config.Atmospheric.Zenith_angle_deg = ZenithAngle;
+%    disp(ZenithAngle);
     
     % Target wavelength grid: 300-1100 nm in 2 nm steps (401 points)
     % This matches the default transmission function wavelength grid
