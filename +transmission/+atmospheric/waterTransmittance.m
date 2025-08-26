@@ -1,4 +1,4 @@
-function Trans = waterTransmittance(Lam, Config)
+function Trans = waterTransmittance(Lam, Config, Args)
     % Water vapor transmission of the Earth atmosphere. SMARTS 2.9.5 model implementation 
     % Input :  - Lam (double array): Wavelength array.
     %          - Config (struct): Configuration struct from inputConfig()
@@ -6,19 +6,22 @@ function Trans = waterTransmittance(Lam, Config)
     %            Uses Config.Atmospheric.Components.Water.Pwv_cm
     %            Uses Config.Atmospheric.Pressure_mbar
     %            Uses Config.Data.Wave_units
+    %          * ...,key,val,...
+    %            'AbsorptionData' - Pre-loaded absorption data to avoid file I/O
     % Output : - Trans (double array): The calculated transmission values (0-1).
     % Reference: Gueymard, C. A. (2019). Solar Energy, 187, 233-253.
     % Author : D. Kovaleva (Jul 2025) 
     % Example: Config = transmission.inputConfig('default');
     %          Lam = transmission.utils.makeWavelengthArray(Config);
     %          Trans = transmission.atmospheric.waterTransmittance(Lam, Config);
-    %          % Custom water vapor:
-    %          Config.Atmospheric.Components.Water.Pwv_cm = 2.5;
-    %          Trans = transmission.atmospheric.waterTransmittance(Lam, Config);
+    %          % With pre-loaded data:
+    %          AbsData = transmission.data.loadAbsorptionData([], {'H2O'}, false);
+    %          Trans = transmission.atmospheric.waterTransmittance(Lam, Config, 'AbsorptionData', AbsData);
 
     arguments
         Lam = transmission.utils.makeWavelengthArray(transmission.inputConfig())
         Config = transmission.inputConfig()
+        Args.AbsorptionData = []  % Optional pre-loaded absorption data
     end
     
     % Extract parameters from Config
@@ -38,8 +41,12 @@ function Trans = waterTransmittance(Lam, Config)
         error('transmission:waterTransmission:invalidPressure', 'Pressure must be positive');  
     end
 
-    % Load water vapor absorption data using dedicated module
-    Abs_data = transmission.data.loadAbsorptionData([], {'H2O'}, false);
+    % Load water vapor absorption data - use cached if provided
+    if ~isempty(Args.AbsorptionData)
+        Abs_data = Args.AbsorptionData;
+    else
+        Abs_data = transmission.data.loadAbsorptionData([], {'H2O'}, false);
+    end
 
     % Direct data extraction with error handling
     if ~isfield(Abs_data, 'H2O')

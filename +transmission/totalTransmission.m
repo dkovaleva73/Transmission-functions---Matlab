@@ -1,25 +1,25 @@
-function Total_transmission = totalTransmission(Lam, Config)
+function Total_transmission = totalTransmission(Lam, Config, Args)
     % Calculate total transmission by multiplying instrumental and atmospheric components
     % Input :  - Lam (double array): Wavelength array in nm
     %          - Config (struct): Configuration struct from inputConfig()
     %            Uses Config.Instrumental for instrumental components
     %            Uses Config.Atmospheric for atmospheric components
+    %          * ...,key,val,...
+    %            'AbsorptionData' - Pre-loaded absorption data to avoid file I/O
     % Output : - Total_transmission (double array): Complete system transmission (0-1)
     % Author : D. Kovaleva (Jul 2025)
     % Reference: Garrappa et al. 2025, A&A 699, A50.
     % Example: Config = transmission.inputConfig('default');
     %          Lam = transmission.utils.makeWavelengthArray(Config);
     %          Total = transmission.totalTransmission(Lam, Config);
-    %          % Disable atmospheric effects
-    %          Config.Atmospheric.Enable = false;
-    %          Total_instrumental_only = transmission.totalTransmission(Lam, Config);
-    %          % Custom wavelength range
-    %          Lam_custom = linspace(400, 900, 201)';
-    %          Total_custom = transmission.totalTransmission(Lam_custom, Config);
+    %          % With pre-loaded absorption data:
+    %          AbsData = transmission.data.loadAbsorptionData([], {}, false);
+    %          Total = transmission.totalTransmission(Lam, Config, 'AbsorptionData', AbsData);
 
     arguments
         Lam = transmission.utils.makeWavelengthArray(transmission.inputConfig())
         Config = transmission.inputConfig()
+        Args.AbsorptionData = []  % Optional pre-loaded absorption data
     end
     
     % 1. Calculate instrumental transmission (OTA)
@@ -27,7 +27,12 @@ function Total_transmission = totalTransmission(Lam, Config)
     
     % 2. Calculate atmospheric transmission (if enabled)
     if Config.Atmospheric.Enable
-        Atmospheric_transmission = transmission.atmospheric.atmosphericTransmission(Lam, Config);
+        % Pass cached absorption data if available
+        if ~isempty(Args.AbsorptionData)
+            Atmospheric_transmission = transmission.atmospheric.atmosphericTransmission(Lam, Config, 'AbsorptionData', Args.AbsorptionData);
+        else
+            Atmospheric_transmission = transmission.atmospheric.atmosphericTransmission(Lam, Config);
+        end
     else
         % No atmospheric effects - perfect transmission
         Atmospheric_transmission = ones(size(Lam));

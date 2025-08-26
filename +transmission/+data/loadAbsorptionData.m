@@ -200,7 +200,7 @@ function Abs_data = loadAbsorptionData(Data_path, Species, Verbose, Validate)
         fprintf('  %% Load specific species, silent mode:\n');
         fprintf('  abs_data = transmission.data.loadAbsorptionData([], {''BrO''}, false);\n');
         fprintf('  \n');
-        fprintf('  %% Access loaded data:\n');NLOSCHMIDT
+        fprintf('  %% Access loaded data:\n');
         fprintf('  ozone_data = abs_data.O3UV;\n');
         fprintf('  wavelength = ozone_data.wavelength;\n');
         fprintf('  absorption = ozone_data.absorption;\n');

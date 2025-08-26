@@ -9,8 +9,7 @@ function totalFlux = calculateTotalFluxCalibrators(Wavelength, TransmittedFlux, 
     %           'Ageom' - Geometric area of telescope aperture (default: π*(0.1397)² m² for LAST)
     % Output   : - totalFlux - Total transmitted flux in photons (array, one value per spectrum)
     % Reference: Garrappa et al. 2025, A&A 699, A50.
-    % Author   : D. Kovaleva
-    % Date: Jul 2025
+    % Author   : D. Kovaleva (Aug 2025)
     % Example: totalFlux = transmission.calibrators.calculateTotalFluxCalibrators(); % Uses defaults
     %          [SpecTrans, Wavelength, ~] = transmission.calibrators.applyTransmissionToCalibrators();
     %          totalFlux = transmission.calibrators.calculateTotalFluxCalibrators(Wavelength, SpecTrans{1,1});
@@ -19,12 +18,13 @@ function totalFlux = calculateTotalFluxCalibrators(Wavelength, TransmittedFlux, 
         Wavelength double = transmission.utils.makeWavelengthArray(transmission.inputConfig())  % nm 
         TransmittedFlux double = []                   % Transmitted flux spectrum (flux * transmission already applied) - double array [Nspec x Nwavelength]
         Metadata = []                                 % Metadata structure from findCalibratorsWithCoords
-        Args.dt = NaN                          % Time interval (seconds)
+        Args.dt = 20                                  % Time interval (seconds)
         Args.Ageom double = pi * (0.1397^2)           % Geometric area (m²) - LAST telescope aperture
+        Args.Norm_ = transmission.inputConfig().General.Norm_ % Normalization constant, to be fitted
+        Args.ZeroPointMode logical = false            % If true: B=H, Dt=1 for zero-point calculation
     end
     
-
-% tic    
+ % tic    
     % If TransmittedFlux or Metadata not provided, get them automatically
     if isempty(TransmittedFlux) || isempty(Metadata)
         % Get calibrator data and apply transmission
@@ -50,12 +50,11 @@ function totalFlux = calculateTotalFluxCalibrators(Wavelength, TransmittedFlux, 
  %   else 
  %     Dt = 1.0; 
     end
-% disp(Dt);    
+   
     % Physical constants using AstroPack
     H = constant.h('SI');      % Planck constant [SI]
     C = constant.c('SI');      % Speed of light [SI]
-  %  disp(H);
-  %  disp(C);
+
   % Convert wavelength from nm to cm for calculation
      
     % Handle multiple spectra (double array [Nspec x Nwavelength])
@@ -73,7 +72,7 @@ function totalFlux = calculateTotalFluxCalibrators(Wavelength, TransmittedFlux, 
     totalFlux = zeros(Nspectra, 1);
     
     % Calculate flux for each spectrum
-    for i = 1:Nspectra
+    for i = 1 : Nspectra
         % Calculate the integrand: transmitted_flux * wavelength (in nm)
         % (transmission already applied in applyTransmissionToCalibrators)
         Integrand = TransmittedFlux(i, :) .* Wavelength(:)';
@@ -81,11 +80,17 @@ function totalFlux = calculateTotalFluxCalibrators(Wavelength, TransmittedFlux, 
         % Integrate using trapezoidal rule 
         A = trapz(Wavelength, Integrand);
         
-        % Calculate normalization factor (nanometers to meters)
-        B = H * C * 1e9;
-        
-        % Calculate total flux in photons
-        totalFlux(i) = 0.5 * Dt * Args.Ageom * A / B;
+        % Calculate normalization factor based on mode
+        if Args.ZeroPointMode
+            % Zero-point mode: B = H, no photon conversion
+            B = H;  % No nm to m conversion
+            % For zero-point: Dt = 1
+            totalFlux(i) = Args.Norm_ * A / B;
+        else
+            % Normal mode: convert to photons
+            B = H * C * 1e9;  % H*C with nm to m conversion
+            totalFlux(i) = Args.Norm_ * Dt * Args.Ageom * A / B;
+        end
     end
 % toc   
 end

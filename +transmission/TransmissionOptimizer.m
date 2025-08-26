@@ -1,0 +1,557 @@
+classdef TransmissionOptimizer < handle
+    % TransmissionOptimizer - Controller class for sequential transmission optimization
+    % This class manages the optimization sequence, stores results between stages,
+    % and coordinates the overall calibration process following the fitutils.py pattern
+    % Author: D. Kovaleva (Aug 2025)
+    % Example:
+    %   Config = transmission.inputConfig();
+    %   optimizer = transmission.TransmissionOptimizer(Config);
+    %   finalParams = optimizer.runFullSequence();
+    
+    properties
+        Config              % Transmission configuration
+        ActiveSequence      % Currently selected optimization sequence
+        OptimizedParams     % Accumulated optimized parameters
+        CurrentStage        % Current stage index
+        CalibratorData      % Calibrator data (persists between stages)
+        AbsorptionData      % Pre-loaded absorption data
+        ChebyshevModel      % Chebyshev field correction model
+        SigmaClippingEnabled % Global sigma clipping enable/disable
+        Verbose             % Verbose output flag
+        Results             % Store results from each stage
+    end
+    
+    methods
+        function obj = TransmissionOptimizer(Config, Args)
+            % Constructor - Initialize the optimizer with configuration
+            
+            arguments
+                Config = transmission.inputConfig()
+                Args.Sequence string = "DefaultSequence"
+                Args.SigmaClippingEnabled logical = true
+                Args.Verbose logical = true
+                Args.SaveIntermediateResults logical = false
+            end
+            
+            obj.Config = Config;
+            obj.SigmaClippingEnabled = Args.SigmaClippingEnabled;
+            obj.Verbose = Args.Verbose;
+            obj.OptimizedParams = struct();
+            obj.CurrentStage = 0;
+            obj.Results = {};
+            
+            % Select optimization sequence
+            switch Args.Sequence
+                case "DefaultSequence"
+                    obj.ActiveSequence = obj.defineDefaultSequence();
+                case "AtmosphericOnly"
+                    obj.ActiveSequence = obj.defineAtmosphericSequence();
+                case "QuickCalibration"
+                    obj.ActiveSequence = obj.defineQuickSequence();
+                case "FieldCorrectionOnly"
+                    obj.ActiveSequence = obj.defineFieldCorrectionSequence();
+                case "Custom"
+                    obj.ActiveSequence = [];  % To be set using setCustomSequence
+                otherwise
+                    error('Unknown sequence: %s', Args.Sequence);
+            end
+            
+            if obj.Verbose
+                fprintf('=== TRANSMISSION OPTIMIZER INITIALIZED ===\n');
+                fprintf('Sequence: %s\n', Args.Sequence);
+                fprintf('Number of stages: %d\n', length(obj.ActiveSequence));
+                fprintf('Sigma clipping: %s\n', string(Args.SigmaClippingEnabled));
+                fprintf('\n');
+            end
+        end
+        
+        function stages = defineDefaultSequence(obj)
+            % Define the default optimization sequence from fitutils.py
+            
+            % Stage 1: Normalize only with sigma clipping
+            stages(1).name = "NormOnly_Initial";
+            stages(1).freeParams = "Norm_";
+            stages(1).sigmaClipping = true;
+            stages(1).sigmaThreshold = 3.0;
+            stages(1).sigmaIterations = 3;
+            stages(1).description = "Initial normalization with outlier removal";
+            
+            % Stage 2: Norm + QE center (no sigma clipping in fitutils.py)
+            stages(2).name = "NormAndCenter";
+            stages(2).freeParams = ["Norm_", "Center"];
+            stages(2).sigmaClipping = false;
+            stages(2).description = "Optimize normalization and QE center";
+            
+            % Stage 3: Field corrections using Chebyshev
+            stages(3).name = "FieldCorrection";
+            stages(3).freeParams = ["cx0", "cx1", "cx2", "cx3", "cx4", "cy0", "cy1", "cy2", "cy3", "cy4"];
+            stages(3).useChebyshev = true;
+            stages(3).chebyshevOrder = 4;
+            stages(3).sigmaClipping = true;
+            stages(3).sigmaThreshold = 2.0;  % Tighter threshold
+            stages(3).sigmaIterations = 3;
+            stages(3).description = "Optimize Chebyshev field correction coefficients";
+            
+            % Stage 4: Norm refinement
+            stages(4).name = "NormRefinement";
+            stages(4).freeParams = "Norm_";
+            stages(4).sigmaClipping = false;
+            stages(4).description = "Refine normalization after field corrections";
+            
+            % Stage 5: Atmospheric parameters
+            stages(5).name = "Atmospheric";
+            stages(5).freeParams = ["Pwv_cm", "Tau_aod500"];
+            stages(5).sigmaClipping = false;
+            stages(5).description = "Optimize water vapor and aerosol parameters";
+        end
+        
+        function stages = defineAtmosphericSequence(obj)
+            % Sequence focusing on atmospheric parameters
+            
+            stages(1).name = "NormOnly";
+            stages(1).freeParams = "Norm_";
+            stages(1).sigmaClipping = false;
+            stages(1).description = "Basic normalization";
+            
+            stages(2).name = "WaterVapor";
+            stages(2).freeParams = "Pwv_cm";
+            stages(2).sigmaClipping = false;
+            stages(2).description = "Water vapor optimization";
+            
+            stages(3).name = "Aerosol";
+            stages(3).freeParams = ["Tau_aod500", "Alpha"];
+            stages(3).sigmaClipping = true;
+            stages(3).sigmaThreshold = 3.0;
+            stages(3).sigmaIterations = 2;
+            stages(3).description = "Aerosol parameters optimization";
+            
+            stages(4).name = "Ozone";
+            stages(4).freeParams = "Dobson_units";
+            stages(4).sigmaClipping = false;
+            stages(4).description = "Ozone column optimization";
+            
+            stages(5).name = "AllAtmospheric";
+            stages(5).freeParams = ["Pwv_cm", "Tau_aod500", "Alpha", "Dobson_units"];
+            stages(5).sigmaClipping = false;
+            stages(5).description = "Refine all atmospheric parameters together";
+        end
+        
+        function stages = defineQuickSequence(obj)
+            % Minimal sequence for quick calibration
+            
+            stages(1).name = "QuickNorm";
+            stages(1).freeParams = "Norm_";
+            stages(1).sigmaClipping = true;
+            stages(1).sigmaThreshold = 3.0;
+            stages(1).sigmaIterations = 1;  % Fewer iterations for speed
+            stages(1).description = "Quick normalization";
+            
+            stages(2).name = "QuickAtmospheric";
+            stages(2).freeParams = "Tau_aod500";
+            stages(2).sigmaClipping = false;
+            stages(2).description = "Quick aerosol adjustment";
+        end
+        
+        function stages = defineFieldCorrectionSequence(obj)
+            % Sequence focusing on field-dependent corrections
+            
+            stages(1).name = "NormOnly";
+            stages(1).freeParams = "Norm_";
+            stages(1).sigmaClipping = true;
+            stages(1).sigmaThreshold = 3.0;
+            stages(1).sigmaIterations = 2;
+            stages(1).description = "Initial normalization";
+            
+            stages(2).name = "LowOrderField";
+            stages(2).freeParams = ["cx0", "cx1", "cy0", "cy1"];  % Order 2
+            stages(2).useChebyshev = true;
+            stages(2).chebyshevOrder = 2;
+            stages(2).sigmaClipping = false;
+            stages(2).description = "Low-order field corrections";
+            
+            stages(3).name = "HighOrderField";
+            stages(3).freeParams = ["cx0", "cx1", "cx2", "cx3", "cx4", "cy0", "cy1", "cy2", "cy3", "cy4"];  % Order 4
+            stages(3).useChebyshev = true;
+            stages(3).chebyshevOrder = 4;
+            stages(3).sigmaClipping = true;
+            stages(3).sigmaThreshold = 2.5;
+            stages(3).sigmaIterations = 2;
+            stages(3).description = "High-order field corrections";
+        end
+        
+        function setCustomSequence(obj, customStages)
+            % Set a custom optimization sequence
+            
+            validateSequence(customStages);
+            obj.ActiveSequence = customStages;
+            
+            if obj.Verbose
+                fprintf('Custom sequence set with %d stages\n', length(customStages));
+            end
+        end
+        
+        function finalParams = runFullSequence(obj)
+            % Run the complete optimization sequence
+            
+            if isempty(obj.ActiveSequence)
+                error('No optimization sequence defined');
+            end
+            
+            if obj.Verbose
+                fprintf('=== STARTING FULL OPTIMIZATION SEQUENCE ===\n');
+                fprintf('Total stages: %d\n\n', length(obj.ActiveSequence));
+            end
+            
+            % Load initial calibrator data
+            obj.loadCalibratorData();
+            
+            % Preload absorption data for efficiency
+            obj.loadAbsorptionData();
+            
+            % Run each stage
+            for stageIdx = 1:length(obj.ActiveSequence)
+                obj.CurrentStage = stageIdx;
+                stage = obj.ActiveSequence(stageIdx);
+                
+                if obj.Verbose
+                    fprintf('--- STAGE %d: %s ---\n', stageIdx, stage.name);
+                    fprintf('Description: %s\n', stage.description);
+                end
+                
+                % Run the stage
+                stageResult = obj.runSingleStage(stage);
+                
+                % Store results
+                obj.Results{stageIdx} = stageResult;
+                
+                % Update optimized parameters
+                obj.updateOptimizedParams(stageResult.OptimalParams);
+                
+                if obj.Verbose
+                    fprintf('Stage %d completed. Cost: %.4e\n\n', stageIdx, stageResult.Fval);
+                end
+            end
+            
+            % Return final optimized parameters
+            finalParams = obj.OptimizedParams;
+            
+            if obj.Verbose
+                fprintf('=== OPTIMIZATION SEQUENCE COMPLETE ===\n');
+                obj.printFinalParameters(finalParams);
+            end
+        end
+        
+        function stageResult = runSingleStage(obj, stage)
+            % Run a single optimization stage
+            
+            % Prepare arguments for minimizerFminGeneric
+            Args = struct();
+            
+            % Set free parameters
+            if ~isempty(stage.freeParams)
+                Args.FreeParams = stage.freeParams;
+            end
+            
+            % Use previously optimized parameters as fixed
+            Args.FixedParams = obj.OptimizedParams;
+            
+            % Handle sigma clipping
+            if isfield(stage, 'sigmaClipping') && any(stage.sigmaClipping) && obj.SigmaClippingEnabled
+                Args.SigmaClipping = true;
+                Args.SigmaThreshold = stage.sigmaThreshold;
+                Args.SigmaIterations = stage.sigmaIterations;
+            else
+                Args.SigmaClipping = false;
+            end
+            
+            % Handle Chebyshev field corrections
+            if isfield(stage, 'useChebyshev') && any(stage.useChebyshev)
+                Args.UseChebyshev = true;
+                if isfield(stage, 'chebyshevOrder')
+                    Args.ChebyshevOrder = stage.chebyshevOrder;
+                end
+            end
+            
+            % Use cached calibrator data
+            Args.InputData = obj.CalibratorData;
+            
+            % Set verbosity
+            Args.Verbose = obj.Verbose;
+            
+            % Run optimization - convert struct to name-value pairs
+            argCell = {};
+            if isfield(Args, 'FreeParams')
+                argCell = [argCell, {'FreeParams', Args.FreeParams}];
+            end
+            if isfield(Args, 'FixedParams')
+                argCell = [argCell, {'FixedParams', Args.FixedParams}];
+            end
+            if isfield(Args, 'SigmaClipping')
+                argCell = [argCell, {'SigmaClipping', Args.SigmaClipping}];
+            end
+            if isfield(Args, 'SigmaThreshold')
+                argCell = [argCell, {'SigmaThreshold', Args.SigmaThreshold}];
+            end
+            if isfield(Args, 'SigmaIterations')
+                argCell = [argCell, {'SigmaIterations', Args.SigmaIterations}];
+            end
+            if isfield(Args, 'UseChebyshev')
+                argCell = [argCell, {'UseChebyshev', Args.UseChebyshev}];
+            end
+            if isfield(Args, 'ChebyshevOrder')
+                argCell = [argCell, {'ChebyshevOrder', Args.ChebyshevOrder}];
+            end
+            if isfield(Args, 'InputData')
+                argCell = [argCell, {'InputData', Args.InputData}];
+            end
+            if isfield(Args, 'Verbose')
+                argCell = [argCell, {'Verbose', Args.Verbose}];
+            end
+            
+            [OptimalParams, Fval, ExitFlag, Output, ResultData] = ...
+                transmission.minimizerFminGeneric(obj.Config, argCell{:});
+            
+            % Update calibrator data if sigma clipping was applied
+            if Args.SigmaClipping
+                obj.CalibratorData = ResultData.CalibData;
+            end
+            
+            % Package results
+            stageResult = struct();
+            stageResult.StageName = stage.name;
+            stageResult.OptimalParams = OptimalParams;
+            stageResult.Fval = Fval;
+            stageResult.ExitFlag = ExitFlag;
+            stageResult.Output = Output;
+            stageResult.ResultData = ResultData;
+            stageResult.StageConfig = stage;
+        end
+        
+        function loadCalibratorData(obj)
+            % Load calibrator data from catalog
+            
+            if obj.Verbose
+                fprintf('Loading calibrator data...\n');
+            end
+            
+   %         CatalogFile = obj.Config.Data.LAST_AstroImage_file;
+            CatalogFile = obj.Config.Data.LAST_catalog_file;
+            SearchRadius = obj.Config.Data.Search_radius_arcsec;
+            
+            [Spec, Mag, Coords, LASTData, Metadata] = ...
+                transmission.data.findCalibratorsWithCoords(CatalogFile, SearchRadius);
+   %             transmission.data.findCalibratorsForAstroImage(CatalogFile, SearchRadius);
+            
+            obj.CalibratorData = struct();
+            obj.CalibratorData.Spec = Spec;
+            obj.CalibratorData.Mag = Mag;
+            obj.CalibratorData.Coords = Coords;
+            obj.CalibratorData.LASTData = LASTData;
+            obj.CalibratorData.Metadata = Metadata;
+            
+            if obj.Verbose
+                fprintf('Loaded %d calibrators\n', length(Spec));
+            end
+        end
+        
+        function loadAbsorptionData(obj)
+            % Preload absorption data for efficiency
+            
+            if obj.Verbose
+                fprintf('Loading absorption data...\n');
+            end
+            
+            AllSpecies = {'H2O', 'O3UV', 'O2', 'CH4', 'CO', 'N2O', 'CO2', 'N2', 'O4', ...
+                          'NH3', 'NO', 'NO2', 'SO2U', 'SO2I', 'HNO3', 'NO3', 'HNO2', ...
+                          'CH2O', 'BrO', 'ClNO'};
+            obj.AbsorptionData = transmission.data.loadAbsorptionData([], AllSpecies, false);
+            
+            if obj.Verbose
+                fprintf('Absorption data loaded\n');
+            end
+        end
+        
+        function updateOptimizedParams(obj, newParams)
+            % Update the accumulated optimized parameters
+            
+            paramFields = fieldnames(newParams);
+            for i = 1:length(paramFields)
+                obj.OptimizedParams.(paramFields{i}) = newParams.(paramFields{i});
+            end
+        end
+        
+        function printFinalParameters(obj, params)
+            % Print final optimized parameters
+            
+            fprintf('\nFinal Optimized Parameters:\n');
+            fprintf('---------------------------\n');
+            
+            % Group parameters by category for better readability
+            categories = struct();
+            categories.General = {};
+            categories.Atmospheric = {};
+            categories.Instrumental = {};
+            categories.FieldCorrection = {};
+            
+            paramNames = fieldnames(params);
+            for i = 1:length(paramNames)
+                paramName = paramNames{i};
+                if startsWith(paramName, 'Norm_')
+                    categories.General{end+1} = paramName;
+                elseif ismember(paramName, {'Tau_aod500', 'Alpha', 'Pwv_cm', 'Dobson_units', 'Temperature_C', 'Pressure'})
+                    categories.Atmospheric{end+1} = paramName;
+                elseif ismember(paramName, {'Center', 'Amplitude', 'Sigma', 'Gamma'})
+                    categories.Instrumental{end+1} = paramName;
+                elseif startsWith(paramName, 'c')
+                    categories.FieldCorrection{end+1} = paramName;
+                end
+            end
+            
+            % Print by category
+            categoryNames = fieldnames(categories);
+            for i = 1:length(categoryNames)
+                catName = categoryNames{i};
+                catParams = categories.(catName);
+                if ~isempty(catParams)
+                    fprintf('%s:\n', catName);
+                    for j = 1:length(catParams)
+                        paramName = catParams{j};
+                        fprintf('  %s: %.6f\n', paramName, params.(paramName));
+                    end
+                    fprintf('\n');
+                end
+            end
+        end
+        
+        function saveResults(obj, filename)
+            % Save optimization results to file
+            
+            if nargin < 2
+                filename = sprintf('TransmissionOptimizer_results_%s.mat', ...
+                                  datestr(datetime('now'), 'yyyymmdd_HHMMSS'));
+            end
+            
+            SavedData = struct();
+            SavedData.OptimizedParams = obj.OptimizedParams;
+            SavedData.Config = obj.Config;
+            SavedData.Sequence = obj.ActiveSequence;
+            SavedData.StageResults = obj.Results;
+            SavedData.Timestamp = datetime('now');
+            
+            save(filename, 'SavedData');
+            
+            if obj.Verbose
+                fprintf('Results saved to: %s\n', filename);
+            end
+        end
+        
+        function plotOptimizationProgress(obj)
+            % Plot optimization progress across all stages
+            
+            if isempty(obj.Results)
+                warning('No results to plot');
+                return;
+            end
+            
+            figure('Name', 'Multi-Stage Optimization Progress', 'Position', [100, 100, 1400, 600]);
+            
+            % Extract costs from each stage
+            stageCosts = cellfun(@(x) x.Fval, obj.Results);
+            stageNames = arrayfun(@(x) x.name, obj.ActiveSequence, 'UniformOutput', false);
+            
+            % Plot 1: Cost per stage
+            subplot(1, 3, 1);
+            bar(stageCosts);
+            xlabel('Stage');
+            ylabel('Final Cost');
+            title('Cost by Stage');
+            set(gca, 'XTickLabel', stageNames);
+            xtickangle(45);
+            grid on;
+            
+            % Plot 2: Cumulative parameter changes
+            subplot(1, 3, 2);
+            hold on;
+            
+            allParams = {};
+            paramValues = [];
+            
+            for i = 1:length(obj.Results)
+                stageParams = obj.Results{i}.OptimalParams;
+                paramNames = fieldnames(stageParams);
+                
+                for j = 1:length(paramNames)
+                    paramIdx = find(strcmp(allParams, paramNames{j}));
+                    if isempty(paramIdx)
+                        allParams{end+1} = paramNames{j};
+                        paramIdx = length(allParams);
+                        paramValues(paramIdx, :) = NaN(1, i-1);
+                    end
+                    paramValues(paramIdx, i) = stageParams.(paramNames{j});
+                end
+            end
+            
+            colors = lines(length(allParams));
+            for i = 1:length(allParams)
+                validIdx = ~isnan(paramValues(i, :));
+                plot(find(validIdx), paramValues(i, validIdx), 'o-', ...
+                     'Color', colors(i, :), 'LineWidth', 2, ...
+                     'DisplayName', allParams{i});
+            end
+            
+            xlabel('Stage');
+            ylabel('Parameter Value');
+            title('Parameter Evolution');
+            legend('Location', 'best');
+            grid on;
+            hold off;
+            
+            % Plot 3: Number of calibrators per stage
+            subplot(1, 3, 3);
+            numCalibrators = cellfun(@(x) x.ResultData.NumCalibrators, obj.Results);
+            bar(numCalibrators);
+            xlabel('Stage');
+            ylabel('Number of Calibrators');
+            title('Calibrators After Sigma Clipping');
+            set(gca, 'XTickLabel', stageNames);
+            xtickangle(45);
+            grid on;
+            
+            sgtitle('Multi-Stage Optimization Progress');
+        end
+        
+        function params = getOptimizedParams(obj)
+            % Get current optimized parameters
+            params = obj.OptimizedParams;
+        end
+        
+        function stage = getCurrentStage(obj)
+            % Get current stage information
+            if obj.CurrentStage > 0 && obj.CurrentStage <= length(obj.ActiveSequence)
+                stage = obj.ActiveSequence(obj.CurrentStage);
+            else
+                stage = [];
+            end
+        end
+    end
+    
+    methods (Static)
+        function validateSequence(stages)
+            % Validate that a sequence structure is properly formatted
+            
+            if isempty(stages)
+                error('Sequence cannot be empty');
+            end
+            
+            requiredFields = {'name', 'freeParams', 'description'};
+            
+            for i = 1:length(stages)
+                for j = 1:length(requiredFields)
+                    if ~isfield(stages(i), requiredFields{j})
+                        error('Stage %d missing required field: %s', i, requiredFields{j});
+                    end
+                end
+            end
+        end
+    end
+end

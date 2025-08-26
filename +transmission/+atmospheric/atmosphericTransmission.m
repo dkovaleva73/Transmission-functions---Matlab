@@ -1,20 +1,23 @@
-function Trans_atmtotal = atmosphericTransmission(Lam, Config)
+function Trans_atmtotal = atmosphericTransmission(Lam, Config, Args)
     % Calculate total atmospheric transmission combining all components
     % Input  : - Lam (double array): Wavelength array in nm
     %          - Config (struct): Configuration struct from inputConfig()
     %            Uses Config.Atmospheric settings for all components
+    %          * ...,key,val,...
+    %            'AbsorptionData' - Pre-loaded absorption data to avoid file I/O
     % Output : - Trans_amtotal (double array): Total atmospheric transmission (0-1)
     % Author : D. Kovaleva (Jul 2025)
     % Example: Config = transmission.inputConfig('default');
     %          Lam = transmission.utils.makeWavelengthArray(Config);
     %          Trans = transmission.atmosphericTransmission(Lam, Config);
-    %          % Disable aerosols:
-    %          Config.Atmospheric.Components.Aerosol.Enable = false;
-    %          Trans = transmission.atmosphericTransmission(Lam, Config);
+    %          % With pre-loaded absorption data:
+    %          AbsData = transmission.data.loadAbsorptionData([], {}, false);
+    %          Trans = transmission.atmosphericTransmission(Lam, Config, 'AbsorptionData', AbsData);
     
     arguments
         Lam = transmission.utils.makeWavelengthArray(transmission.inputConfig())
         Config = transmission.inputConfig()
+        Args.AbsorptionData = []  % Optional pre-loaded absorption data
     end
     
     % Check if atmospheric transmission is enabled
@@ -57,7 +60,12 @@ function Trans_atmtotal = atmosphericTransmission(Lam, Config)
         if verbose
             fprintf('Calculating ozone absorption...\n');
         end
-        Trans_ozone = transmission.atmospheric.ozoneTransmission(Lam, Config);
+        % Pass cached absorption data if available
+        if ~isempty(Args.AbsorptionData)
+            Trans_ozone = transmission.atmospheric.ozoneTransmission(Lam, Config, 'AbsorptionData', Args.AbsorptionData);
+        else
+            Trans_ozone = transmission.atmospheric.ozoneTransmission(Lam, Config);
+        end
         Trans_atmtotal = Trans_atmtotal .* Trans_ozone;
         
         if Config.Output.Save_components
@@ -72,7 +80,12 @@ function Trans_atmtotal = atmosphericTransmission(Lam, Config)
         if verbose
             fprintf('Calculating water vapor absorption...\n');
         end
-        Trans_water = transmission.atmospheric.waterTransmittance(Lam, Config);
+        % Pass cached absorption data if available
+        if ~isempty(Args.AbsorptionData)
+            Trans_water = transmission.atmospheric.waterTransmittance(Lam, Config, 'AbsorptionData', Args.AbsorptionData);
+        else
+            Trans_water = transmission.atmospheric.waterTransmittance(Lam, Config);
+        end
         Trans_atmtotal = Trans_atmtotal .* Trans_water;
         
         if Config.Output.Save_components
@@ -102,7 +115,12 @@ function Trans_atmtotal = atmosphericTransmission(Lam, Config)
         if verbose
             fprintf('Calculating molecular absorption (UMG)...\n');
         end
-        Trans_umg = transmission.atmospheric.umgTransmittance(Lam, Config);
+        % Pass cached absorption data if available
+        if ~isempty(Args.AbsorptionData)
+            Trans_umg = transmission.atmospheric.umgTransmittance(Lam, Config, 'AbsorptionData', Args.AbsorptionData);
+        else
+            Trans_umg = transmission.atmospheric.umgTransmittance(Lam, Config);
+        end
         Trans_atmtotal = Trans_atmtotal .* Trans_umg;
         
         if Config.Output.Save_components

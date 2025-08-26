@@ -1,4 +1,4 @@
-function Trans = ozoneTransmission(Lam, Config)
+function Trans = ozoneTransmission(Lam, Config, Args)
     % Ozone transmission of the Earth atmosphere.
     % Based on SMARTS 2.9.5 model.
     % Input :  - Lam (double array): Wavelength array.
@@ -6,6 +6,8 @@ function Trans = ozoneTransmission(Lam, Config)
     %            Uses Config.Atmospheric.Zenith_angle_deg
     %            Uses Config.Atmospheric.Components.Ozone.Dobson_units
     %            Uses Config.Data.Wave_units
+    %          * ...,key,val,...
+    %            'AbsorptionData' - Pre-loaded absorption data to avoid file I/O
     % Output :  - transmission (double array): The calculated transmission values (0-1).
     % Author : D. Kovaleva (Jul 2025)
     % References: 1. Gueymard, C. A. (2019). Solar Energy, 187, 233-253.
@@ -13,13 +15,14 @@ function Trans = ozoneTransmission(Lam, Config)
     % Example:   Config = transmission.inputConfig('default');
     %            Lam = transmission.utils.makeWavelengthArray(Config);
     %            Trans = transmission.atmospheric.ozoneTransmission(Lam, Config);
-    %            % Custom ozone column:
-    %            Config.Atmospheric.Components.Ozone.Dobson_units = 350;
-    %            Trans = transmission.atmospheric.ozoneTransmission(Lam, Config);
+    %            % With pre-loaded data:
+    %            AbsData = transmission.data.loadAbsorptionData([], {'O3UV'}, false);
+    %            Trans = transmission.atmospheric.ozoneTransmission(Lam, Config, 'AbsorptionData', AbsData);
     
     arguments
         Lam = transmission.utils.makeWavelengthArray(transmission.inputConfig())
         Config = transmission.inputConfig()
+        Args.AbsorptionData = []  % Optional pre-loaded absorption data
     end
     
     % Extract parameters from Config
@@ -39,8 +42,12 @@ function Trans = ozoneTransmission(Lam, Config)
     Am_ = transmission.utils.airmassFromSMARTS('o3', Config);
     
 
-    % Load ozone absorption data using dedicated module
-    Abs_data = transmission.data.loadAbsorptionData([], {'O3UV'}, false);
+    % Load ozone absorption data - use cached if provided
+    if ~isempty(Args.AbsorptionData)
+        Abs_data = Args.AbsorptionData;
+    else
+        Abs_data = transmission.data.loadAbsorptionData([], {'O3UV'}, false);
+    end
     
     % Extract ozone cross-section data directly
     if ~isfield(Abs_data, 'O3UV')

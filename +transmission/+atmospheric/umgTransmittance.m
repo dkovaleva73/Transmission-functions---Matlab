@@ -1,4 +1,4 @@
-function Trans = umgTransmittance(Lam, Config)
+function Trans = umgTransmittance(Lam, Config, Args)
     % Calculate Uniformly Mixed Gases (UMG) transmittance implementing SMARTS 2.9.5 model.
     % Input  : - Lam (double array): Wavelength array in nm.
     %          - Config (struct): Configuration struct from inputConfig()
@@ -7,19 +7,22 @@ function Trans = umgTransmittance(Lam, Config)
     %            Uses Config.Atmospheric.Pressure_mbar
     %            Uses Config.Atmospheric.Components.Molecular_absorption.Co2_ppm
     %            Uses Config.Atmospheric.Components.Molecular_absorption.With_trace_gases
+    %          * ...,key,val,...
+    %            'AbsorptionData' - Pre-loaded absorption data to avoid file I/O
     % Output : Trans (double array): The calculated transmission values (0-1).
     % Author : D. Kovaleva (July 2025) 
     % Reference: Gueymard, C. A. (2019). Solar Energy, 187, 233-253.
     % Example:  Config = transmission.inputConfig('default');
     %           Lam = transmission.utils.makeWavelengthArray(Config);
     %           Trans = transmission.atmospheric.umgTransmittance(Lam, Config);
-    %           % Custom CO2 concentration:
-    %           Config.Atmospheric.Components.Molecular_absorption.Co2_ppm = 415;
-    %           Trans = transmission.atmospheric.umgTransmittance(Lam, Config);
+    %           % With pre-loaded data:
+    %           AbsData = transmission.data.loadAbsorptionData([], {'O2', 'CH4', 'CO', 'N2O', 'CO2', 'N2', 'O4'}, false);
+    %           Trans = transmission.atmospheric.umgTransmittance(Lam, Config, 'AbsorptionData', AbsData);
     
     arguments
         Lam = transmission.utils.makeWavelengthArray(transmission.inputConfig())
         Config = transmission.inputConfig()
+        Args.AbsorptionData = []  % Optional pre-loaded absorption data
     end
     
     % Extract parameters from Config
@@ -56,7 +59,7 @@ function Trans = umgTransmittance(Lam, Config)
     % Pre-allocate total optical depth
     Tau_total = zeros(Lam_length, 1);
     
-    % Load absorption data using dedicated module
+    % Load absorption data - use cached if provided
     UMG_species = {'O2', 'CH4', 'CO', 'N2O', 'CO2', 'N2', 'O4'};
     if With_trace_gases
         % Add all trace gases to match Python implementation exactly
@@ -64,8 +67,12 @@ function Trans = umgTransmittance(Lam, Config)
         UMG_species = [UMG_species, trace_species];
     end
     
-    % Use memory-optimized data loader
-    Abs_data = transmission.data.loadAbsorptionData([], UMG_species, false);
+    % Use cached data if provided, otherwise load from disk
+    if ~isempty(Args.AbsorptionData)
+        Abs_data = Args.AbsorptionData;
+    else
+        Abs_data = transmission.data.loadAbsorptionData([], UMG_species, false);
+    end
     
     % Pre-compute all airmass values at once for better performance
     Am_o2 = transmission.utils.airmassFromSMARTS('o2', Config);

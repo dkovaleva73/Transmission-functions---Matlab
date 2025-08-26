@@ -1,0 +1,300 @@
+function [OptimalNorm, Fval, ExitFlag, Output] = minimizerFmin(Config, Args)
+    % Minimize cost function using fminsearch (simplex method)
+    % Minimizes sum of squared magnitude differences: sum(DiffMag.^2) 
+    % where DiffMag = 2.5*log10(TotalFlux/FLUX_APER_3)
+    % Variable: Norm_ parameter in transmission.inputConfig.General
+    % Input:  - Config - (optional) Configuration structure from transmission.inputConfig()
+    %         - Args - Optional arguments:
+    %           'InitialNorm' - Initial value for Norm_ (default: 0.5)
+    %           'Verbose' - Enable verbose output (default: true)
+    %           'PlotResults' - Plot optimization progress (default: false)
+    %           'SaveResults' - Save optimization results (default: false)
+    % Output: - OptimalNorm - Optimal value of Norm_ that minimizes cost
+    %         - Fval - Final value of cost function (sum of squared magnitude differences)
+    %         - ExitFlag - Exit condition from fminsearch
+    %         - Output - Optimization details from fminsearch
+    %
+    % Author: D. Kovaleva (Aug 2025)
+    % Example:
+    %   Config = transmission.inputConfig();
+    %   [OptimalNorm, Fval] = transmission.minimizerFmin(Config);
+    
+    arguments
+        Config = transmission.inputConfig()
+        Args.InitialNorm  = 0.5
+        Args.Verbose logical = false
+        Args.PlotResults logical = false
+        Args.SaveResults logical = false
+    end
+    
+    % Extract arguments
+    InitialNorm = Args.InitialNorm;
+    Verbose = Args.Verbose;
+    PlotResults = Args.PlotResults;
+    SaveResults = Args.SaveResults;
+    
+    % Validate initial value
+    if InitialNorm < 0 || InitialNorm > 1
+        error('InitialNorm must be between 0 and 1');
+    end
+    
+    if Verbose
+        fprintf('=== TRANSMISSION MINIMIZER (fminsearch) ===\n');
+        fprintf('Minimizing: sum(DiffMag.^2) - sum of squared magnitude differences\n');
+        fprintf('DiffMag = 2.5*log10(TotalFlux/FLUX_APER_3)\n');
+        fprintf('Variable: Norm_ parameter [0, 1]\n');
+        fprintf('Initial Norm_: %.3f\n\n', InitialNorm);
+    end
+    
+    % Store iteration history for plotting
+    IterationHistory = struct('NormValues', [], 'CostValues', []);
+    IterCount = 0;
+    
+    % Preload all absorption data to avoid repeated file I/O
+    if Verbose
+        fprintf('Preloading absorption data...\n');
+    end
+    
+    % Load all absorption data once - load all species together
+    AllSpecies = {'H2O', 'O3UV', 'O2', 'CH4', 'CO', 'N2O', 'CO2', 'N2', 'O4', ...
+                  'NH3', 'NO', 'NO2', 'SO2U', 'SO2I', 'HNO3', 'NO3', 'HNO2', ...
+                  'CH2O', 'BrO', 'ClNO'};
+    AbsorptionData = transmission.data.loadAbsorptionData([], AllSpecies, false);
+    
+    if Verbose
+        fprintf('Absorption data loaded\n\n');
+    end
+    
+    % First, run calibrator selection once with default config
+    if Verbose
+        fprintf('Running initial calibrator selection...\n');
+    end
+    
+    % Get calibrators using the catalog file from Config
+    CatalogFile = Config.Data.LAST_AstroImage_file;
+    SearchRadius = Config.Data.Search_radius_arcsec;
+    
+    [Spec, Mag, Coords, LASTData, Metadata] = transmission.data.findCalibratorsForAstroImage(...
+        CatalogFile, SearchRadius);
+
+  %   [Spec, Mag, Coords, LASTData, Metadata] = transmission.data.findCalibratorsForAstroImage_match_catsHTM(...
+  %     CatalogFile, SearchRadius);
+  
+    if isempty(Spec)
+        error('No calibrators found. Check catalog file and search parameters.');
+    end
+    
+    if Verbose
+        fprintf('Found %d calibrators\n', length(Spec));
+        
+        % Quick test to verify Norm_ affects the calculation
+        fprintf('Testing Norm_ parameter effect...\n');
+        fprintf('Spec dimensions: %dx%d\n', size(Spec, 1), size(Spec, 2));
+        fprintf('First entry populated: %s, Second entry populated: %s\n', ...
+                string(~isempty(Spec{1,1})), string(~isempty(Spec{1,2})));
+        fprintf('First spectrum size: %dx%d\n', size(Spec{1,1}, 1), size(Spec{1,1}, 2));
+        fprintf('Expected Gaia wavelength points: %d\n', length(Config.Utils.Gaia_wavelength));
+        
+        TestSpec = Spec(1:1, :);  % Use first spectrum (keep as cell array with both columns)
+        [TestSpecTrans, TestWavelength, ~] = transmission.calibrators.applyTransmissionToCalibrators(...
+            TestSpec, Metadata, Config, 'AbsorptionData', AbsorptionData);
+        if iscell(TestSpecTrans)
+            TestFluxArray = cell2mat(cellfun(@(x) x(:)', TestSpecTrans(:,1), 'UniformOutput', false));
+        else
+            TestFluxArray = TestSpecTrans;
+        end
+        TestFlux1 = transmission.calibrators.calculateTotalFluxCalibrators(...
+            TestWavelength, TestFluxArray, Metadata, 'Norm_', 0.5);
+        TestFlux2 = transmission.calibrators.calculateTotalFluxCalibrators(...
+            TestWavelength, TestFluxArray, Metadata, 'Norm_', 0.6);
+        fprintf('  Norm_=0.5: Flux=%.2e, Norm_=0.6: Flux=%.2e (ratio=%.3f)\n', ...
+            TestFlux1, TestFlux2, TestFlux2/TestFlux1);
+        if abs(TestFlux2/TestFlux1 - 1.2) > 0.01
+            warning('Norm_ parameter may not be working correctly! Expected ratio ~1.2, got %.3f', TestFlux2/TestFlux1);
+        end
+        
+        fprintf('\nStarting optimization...\n');
+    end
+    
+    % Define the objective function with bounds checking
+    function Cost = objective(NormValue)
+        IterCount = IterCount + 1;
+        
+        % Apply bounds [0, 1] - return high cost if outside bounds
+        if NormValue < 0 || NormValue > 1
+            Cost = 1e20 * (1 + abs(NormValue - 0.5));  % Penalty for out of bounds
+            if Verbose
+                fprintf('  Iter %3d: Norm_ = %.4f (OUT OF BOUNDS), Cost = %.2e\n', ...
+                        IterCount, NormValue, Cost);
+            end
+            return;
+        end
+        
+        % Update Norm_ in the config
+        ConfigLocal = Config;
+        ConfigLocal.General.Norm_ = NormValue;
+        
+        try
+            % Apply transmission with updated Norm_ and cached absorption data
+            [SpecTrans, Wavelength, ~] = transmission.calibrators.applyTransmissionToCalibrators(...
+                Spec, Metadata, ConfigLocal, 'AbsorptionData', AbsorptionData);
+            
+            % Convert cell array to double array if needed
+            if iscell(SpecTrans)
+                TransmittedFluxArray = cell2mat(cellfun(@(x) x(:)', SpecTrans(:,1), 'UniformOutput', false));
+            else
+                TransmittedFluxArray = SpecTrans;
+            end
+            
+            % Calculate total flux with updated Norm_
+            TotalFlux = transmission.calibrators.calculateTotalFluxCalibrators(...
+                Wavelength, TransmittedFluxArray, Metadata, 'Norm_', NormValue);
+            
+            % Calculate DiffMag = 2.5*log10(TotalFlux/FLUX_APER_3)
+            DiffMag = 2.5 * log10(TotalFlux ./ LASTData.FLUX_APER_3);
+            
+            % Calculate cost: sum of squared magnitude residuals
+            Cost = sum(DiffMag.^2);
+            
+            % Store iteration history
+            IterationHistory.NormValues(end+1) = NormValue;
+            IterationHistory.CostValues(end+1) = Cost;
+            
+            if Verbose
+                fprintf('  Iter %3d: Norm_ = %.4f, Cost = %.4e, RMS = %.4e, MeanFlux = %.2e\n', ...
+                        IterCount, NormValue, Cost, sqrt(Cost/length(DiffMag)), mean(TotalFlux));
+            end
+            
+        catch ME
+            if Verbose
+                fprintf('  ERROR in iteration %d: %s\n', IterCount, ME.message);
+                fprintf('  Error identifier: %s\n', ME.identifier);
+                if ~isempty(ME.stack)
+                    fprintf('  Location: %s (line %d)\n', ME.stack(1).name, ME.stack(1).line);
+                end
+            end
+            warning(ME.identifier, '%s', ME.message);
+            Cost = 1e20;  % Return large cost if error occurs
+        end
+    end
+    
+    % Set optimization options
+    Options = optimset('Display', 'iter', ...
+                      'TolX', 1e-4, ...
+                      'TolFun', 1e-6, ...
+                      'MaxIter', 100, ...
+                      'MaxFunEvals', 200);
+    
+    if ~Verbose
+        Options = optimset(Options, 'Display', 'off');
+    end
+    
+    % Run fminsearch
+    tic;
+    [OptimalNorm, Fval, ExitFlag, Output] = fminsearch(@objective, InitialNorm, Options);
+    OptimizationTime = toc;
+    
+    % Check if optimal value is within bounds
+    if OptimalNorm < 0 || OptimalNorm > 1
+        warning('Optimal Norm_ = %.4f is outside bounds [0, 1]. Clamping to bounds.', OptimalNorm);
+        OptimalNorm = max(0, min(1, OptimalNorm));
+        % Recalculate final cost with clamped value
+        Fval = objective(OptimalNorm);
+    end
+    
+    % Calculate final RMS error in magnitudes
+    RmsError = sqrt(Fval / length(LASTData.FLUX_APER_3));
+    
+    % Display results
+    if Verbose
+        fprintf('\n=== OPTIMIZATION COMPLETE ===\n');
+        fprintf('Optimal Norm_: %.6f\n', OptimalNorm);
+        fprintf('Final cost (sum of squared mag differences): %.4e\n', Fval);
+        fprintf('RMS error (magnitudes): %.4e\n', RmsError);
+        fprintf('Exit flag: %d\n', ExitFlag);
+        fprintf('Iterations: %d\n', Output.iterations);
+        fprintf('Function evaluations: %d\n', Output.funcCount);
+        fprintf('Time elapsed: %.2f seconds\n', OptimizationTime);
+        
+        if ExitFlag == 1
+            fprintf('Status: Converged successfully\n');
+        elseif ExitFlag == 0
+            fprintf('Status: Maximum iterations reached\n');
+        else
+            fprintf('Status: Did not converge\n');
+        end
+    end
+    
+    % Plot results if requested
+    if PlotResults && ~isempty(IterationHistory.NormValues)
+        figure('Name', 'Optimization Progress', 'Position', [400, 100, 1200, 500]);
+        
+        % Plot 1: Cost vs Iteration
+        subplot(1, 2, 1);
+        semilogy(IterationHistory.CostValues, 'o-', 'LineWidth', 2, 'MarkerSize', 6, ...
+                 'MarkerFaceColor', 'blue', 'MarkerEdgeColor', 'black');
+        xlabel('Iteration', 'FontSize', 12);
+        ylabel('Sum of Squared Magnitude Differences', 'FontSize', 12);
+        title('Cost Function vs Iteration', 'FontSize', 14, 'FontWeight', 'bold');
+        grid on;
+        
+        % Mark optimal point
+        hold on;
+        [MinCost, MinIdx] = min(IterationHistory.CostValues);
+        plot(MinIdx, MinCost, 'r*', 'MarkerSize', 15, 'LineWidth', 2);
+        text(MinIdx, MinCost, sprintf('  Min: %.2e', MinCost), ...
+             'FontSize', 10, 'BackgroundColor', 'yellow');
+        hold off;
+        
+        % Plot 2: Norm_ vs Iteration
+        subplot(1, 2, 2);
+        plot(IterationHistory.NormValues, 'o-', 'LineWidth', 2, 'MarkerSize', 6, ...
+             'MarkerFaceColor', 'green', 'MarkerEdgeColor', 'black');
+        xlabel('Iteration', 'FontSize', 12);
+        ylabel('Norm\_', 'FontSize', 12);
+        title('Norm\_ vs Iteration', 'FontSize', 14, 'FontWeight', 'bold');
+        grid on;
+        ylim([-0.1, 1.1]);
+        
+        % Add bounds lines
+        hold on;
+        plot(xlim, [0 0], 'r--', 'LineWidth', 1);
+        plot(xlim, [1 1], 'r--', 'LineWidth', 1);
+        
+        % Mark optimal point
+        plot(MinIdx, IterationHistory.NormValues(MinIdx), 'r*', 'MarkerSize', 15, 'LineWidth', 2);
+        text(MinIdx, IterationHistory.NormValues(MinIdx), ...
+             sprintf('  Optimal: %.4f', IterationHistory.NormValues(MinIdx)), ...
+             'FontSize', 10, 'BackgroundColor', 'yellow');
+        hold off;
+        
+        sgtitle(sprintf('Optimization Progress (fminsearch) - %d Calibrators', length(Spec)), ...
+                'FontSize', 16, 'FontWeight', 'bold');
+    end
+    
+    % Save results if requested
+    if SaveResults
+        Results = struct();
+        Results.OptimalNorm = OptimalNorm;
+        Results.FinalCost = Fval;
+        Results.RmsError = RmsError;
+        Results.ExitFlag = ExitFlag;
+        Results.Output = Output;
+        Results.IterationHistory = IterationHistory;
+        Results.ConfigUsed = Config;
+        Results.NumCalibrators = length(Spec);
+        Results.Timestamp = datetime('now');
+        Results.OptimizationTimeSeconds = OptimizationTime;
+        
+        Filename = sprintf('minimizerFmin_results_%s.mat', datetime(datetime("now"), 'yyyymmdd_HHMMSS'));
+        save(Filename, 'Results');
+        
+        if Verbose
+            fprintf('\nResults saved to: %s\n', Filename);
+        end
+    end
+    
+    if Verbose
+        fprintf('\nOptimization completed!\n');
+    end
+end
