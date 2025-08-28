@@ -27,7 +27,7 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
         Args.Verbose logical = true
         Args.SaveResults logical = false
     end
-    Dt = 20;
+    
     % Get AstroImage file
     if isempty(Args.AstroImageFile)
         AstroImageFile = Config.Data.LAST_AstroImage_file;
@@ -273,25 +273,22 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
             MAG_ZP(i) = ZP_magnitude;
         end
         
-       
+        % Calculate AB magnitude for this star using flux-based formula:
+         MAG_AB = -2.5*log10(FLUX_PSF/Dt) + MAG_ZP
         if ismember('FLUX_PSF', LASTData.Properties.VariableNames)
             FLUX_PSF_value = LASTData.FLUX_PSF(i);
-
-       % Calculate AB magnitude for this star using flux-based formula:
-        % MAG_AB = -2.5*log10(FLUX_PSF_value/Dt) + MAG_ZP;
-           if ~isnan(FLUX_PSF_value) && FLUX_PSF_value > 0
+            if ~isnan(FLUX_PSF_value) && FLUX_PSF_value > 0
                 % Get exposure time (Dt)
-               if ~isnan(Metadata.ExpTime)
-                    Dt = Metadata.ExpTime;
-                    Dt = 20.0;
-                else
-                    Dt = 20.0;  % Default exposure time
-                end
-                % Calculate AB magnitude from flux
-                MAG_PSF_AB(i) = -2.5 * log10(FLUX_PSF_value / Dt) + MAG_ZP(i);
-            else
-                MAG_PSF_AB(i) = NaN;
-            end
+       %         if ~isnan(Metadata.ExpTime)
+       %             Dt = Metadata.ExpTime;
+       %         else
+       %             Dt = 20.0;  % Default exposure time
+       %         end
+       %         % Calculate AB magnitude from flux
+       %         MAG_PSF_AB(i) = -2.5 * log10(FLUX_PSF_value / Dt) + MAG_ZP(i);
+       %     else
+       %         MAG_PSF_AB(i) = NaN;
+       %     end
         elseif ismember('MAG_PSF', LASTData.Properties.VariableNames)
             % Fallback: use instrumental magnitude if flux not available
             MAG_PSF_value = LASTData.MAG_PSF(i);

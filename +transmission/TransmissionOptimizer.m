@@ -190,8 +190,13 @@ classdef TransmissionOptimizer < handle
             end
         end
         
-        function finalParams = runFullSequence(obj)
+        function finalParams = runFullSequence(obj, fieldNum)
             % Run the complete optimization sequence
+            % Input: fieldNum - Field number (1-24) for AstroImage, default: 1
+            
+            if nargin < 2
+                fieldNum = 1;  % Default field number
+            end
             
             if isempty(obj.ActiveSequence)
                 error('No optimization sequence defined');
@@ -199,11 +204,12 @@ classdef TransmissionOptimizer < handle
             
             if obj.Verbose
                 fprintf('=== STARTING FULL OPTIMIZATION SEQUENCE ===\n');
+                fprintf('Field number: %d\n', fieldNum);
                 fprintf('Total stages: %d\n\n', length(obj.ActiveSequence));
             end
             
-            % Load initial calibrator data
-            obj.loadCalibratorData();
+            % Load initial calibrator data for specified field
+            obj.loadCalibratorData(fieldNum);
             
             % Preload absorption data for efficiency
             obj.loadAbsorptionData();
@@ -327,20 +333,23 @@ classdef TransmissionOptimizer < handle
             stageResult.StageConfig = stage;
         end
         
-        function loadCalibratorData(obj)
-            % Load calibrator data from catalog
+        function loadCalibratorData(obj, fieldNum)
+            % Load calibrator data from catalog for specific field
+            % Input: fieldNum - Field number (1-24) for AstroImage, default: 1
             
-            if obj.Verbose
-                fprintf('Loading calibrator data...\n');
+            if nargin < 2
+                fieldNum = 1;  % Default field number
             end
             
-   %         CatalogFile = obj.Config.Data.LAST_AstroImage_file;
-            CatalogFile = obj.Config.Data.LAST_catalog_file;
+            if obj.Verbose
+                fprintf('Loading calibrator data for field %d...\n', fieldNum);
+            end
+            
+            CatalogFile = obj.Config.Data.LAST_AstroImage_file;
             SearchRadius = obj.Config.Data.Search_radius_arcsec;
             
             [Spec, Mag, Coords, LASTData, Metadata] = ...
-                transmission.data.findCalibratorsWithCoords(CatalogFile, SearchRadius);
-   %             transmission.data.findCalibratorsForAstroImage(CatalogFile, SearchRadius);
+                transmission.data.findCalibratorsForAstroImage(CatalogFile, SearchRadius, fieldNum);
             
             obj.CalibratorData = struct();
             obj.CalibratorData.Spec = Spec;

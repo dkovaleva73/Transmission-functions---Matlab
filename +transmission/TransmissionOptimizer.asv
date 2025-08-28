@@ -334,11 +334,12 @@ classdef TransmissionOptimizer < handle
                 fprintf('Loading calibrator data...\n');
             end
             
-   %         CatalogFile = obj.Config.Data.LAST_AstroImage_file;
-            CatalogFile = obj.Config.Data.LAST_AstroCatalog_file;
+            CatalogFile = obj.Config.Data.LAST_AstroImage_file;
+   %         CatalogFile = obj.Config.Data.LAST_catalog_file;
             SearchRadius = obj.Config.Data.Search_radius_arcsec;
             
             [Spec, Mag, Coords, LASTData, Metadata] = ...
+                transmission.data.findCalibratorsWithCoords(CatalogFile, SearchRadius);
    %             transmission.data.findCalibratorsForAstroImage(CatalogFile, SearchRadius);
             
             obj.CalibratorData = struct();
