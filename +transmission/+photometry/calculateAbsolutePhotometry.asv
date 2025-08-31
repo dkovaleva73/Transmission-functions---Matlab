@@ -27,6 +27,9 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
         Args.Verbose logical = true
         Args.SaveResults logical = false
     end
+
+    Dt = 20;
+    H = constant.h('SI');
     
     % Get AstroImage file
     if isempty(Args.AstroImageFile)
@@ -34,7 +37,9 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
     else
         AstroImageFile = Args.AstroImageFile;
     end
-    
+
+    AstroCatFile = Config.Data.LAST_catalog_file;
+      
     if Args.Verbose
         fprintf('=== ABSOLUTE PHOTOMETRY CALCULATION ===\n');
         fprintf('Using optimized transmission parameters\n');
@@ -48,9 +53,13 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
     else        
         AI = io.files.load2(AstroImageFile);
     end
-    
+
+    %Load AstroCatalog
+       AC = AstroCatalog(AstroCatFile);
+       
+
     % Get the catalog for specified image
-    AC = AI(Args.ImageNum).CatData;
+%    AC = AI(Args.ImageNum).CatData;
     
     % Extract LAST catalog data as a MATLAB table
     % Check what format the data is in
@@ -173,24 +182,17 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
     SpecTrans_ZP = FlatSpectrum(:) .* TransFunc(:);
   
     % Calculate total flux for zero-point directly
-    % For zero-point: B = H (no photon conversion), Dt = 1, Ageom = 1
-    H = constant.h('SI');
-    
-    % Calculate the integrand: transmitted_flux * wavelength (like Python)
+    % For zero-point: B = H, Dt = 1
     % Python: scipy.integrate.trapz(transm_full * spectrum_interp * abscal_obj.wvl_arr, x=abscal_obj.wvl_arr)
     Integrand = SpecTrans_ZP(:) ./ Wavelength(:);
     
     % Integrate using trapezoidal rule
     A = trapz(Wavelength(:), Integrand);
-    
-    % B factor from Python: h.value * c.value * 1e9 
-    C = constant.c('SI');
-%    B = H * C * 1e9;  % Include nm to m conversion factor
     B = H;   
     % Calculate zero-point flux (like Python synthetic photometry)
     % Python: flux_syn = parvals['norm'] * Ageom * a / b
     % For zero-point: dt=1, but we DO need Ageom for the telescope collecting area
-    Ageom = pi * (0.1397^2);  % LAST telescope aperture area in m²
+    Ageom = Config.Instrumental.Telescope.Aperture_area_m2;  % LAST telescope aperture area from Config
     TotalFlux_ZP_base = ConfigOptimized.General.Norm_ * Ageom * A / B;
     
     % Convert flux to zero-point magnitude: ZP = -2.5*log10(flux_ZP)
@@ -203,6 +205,9 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
     
     % Setup Chebyshev model if we have field corrections
     hasFieldCorrections = false;
+    hasPythonFieldCorrections = false;
+    
+    % Check for simple Chebyshev field corrections (cx0, cy0, etc.)
     if isfield(OptimizedParams, 'cx0') || isfield(OptimizedParams, 'cy0')
         hasFieldCorrections = true;
         % Extract Chebyshev coefficients
@@ -226,10 +231,25 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
         end
     end
     
+    % Check for Python field corrections (kx0, kx, ky, etc.)
+    pythonFieldParams = {'kx0', 'kx', 'ky', 'kx2', 'ky2', 'kx3', 'ky3', 'kx4', 'ky4', 'kxy'};
+    for i = 1:length(pythonFieldParams)
+        if isfield(OptimizedParams, pythonFieldParams{i})
+            hasPythonFieldCorrections = true;
+            hasFieldCorrections = true;  % Enable general field corrections
+            break;
+        end
+    end
+    
+    if hasPythonFieldCorrections && Args.Verbose
+        fprintf('Python field corrections detected from OptimizedParams\n');
+    end
+    
     % Initialize arrays for results
     Nstars = height(LASTData);
     MAG_ZP = zeros(Nstars, 1);
     MAG_PSF_AB = zeros(Nstars, 1);
+    FIELD_CORRECTION_MAG = zeros(Nstars, 1);  % Store field correction separately
     
     if Args.Verbose
         fprintf('\nCalculating AB magnitudes for %d stars...\n', Nstars);
@@ -241,54 +261,92 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
             fprintf('  Processing star %d/%d\n', i, Nstars);
         end
         
-        % Calculate field correction for this star's position
-        FieldCorrection = 1.0;  % Default: no correction
+        % Calculate field correction for this star's position (in magnitude space)
+        FieldCorrection_mag = 0.0;  % Default: no correction (magnitude space)
         
         if hasFieldCorrections
-            % Normalize coordinates to [-1, 1] for Chebyshev
+            % Normalize coordinates to [-1, 1] for Chebyshev using detector dimensions from Config
             X = LASTData.X(i);
             Y = LASTData.Y(i);
+           
+            % Use detector dimensions from Config and rescaleInputData
+            min_coord = Config.Instrumental.Detector.Min_coordinate;
+            max_coord = Config.Instrumental.Detector.Max_coordinate;
             
-            % Assuming detector coordinates go from 1 to ~4000
-            % You may need to adjust these based on your detector size
-            X_norm = 2 * (X - 2000) / 4000;  % Normalize to [-1, 1]
-            Y_norm = 2 * (Y - 2000) / 4000;
+            X_norm = transmission.utils.rescaleInputData(X, min_coord, max_coord, [], [], Config);
+            Y_norm = transmission.utils.rescaleInputData(Y, min_coord, max_coord, [], [], Config);
             
-            % Evaluate Chebyshev polynomials
-            if exist('utils.chebyshevModel', 'class') || exist('+utils/chebyshevModel.m', 'file')
-                chebModel = utils.chebyshevModel('CoefficientsX', cx, 'CoefficientsY', cy);
-                FieldCorrection = chebModel.evaluate(X_norm, Y_norm);
+            % Check for Python field correction model
+            if hasPythonFieldCorrections || ...
+               (isfield(ConfigOptimized, 'FieldCorrection') && ...
+                isfield(ConfigOptimized.FieldCorrection, 'Mode') && ...
+                strcmp(ConfigOptimized.FieldCorrection.Mode, 'python'))
+                % Python field model: Cheb_x(xcoor_) + Cheb_y(ycoor_) + kx0 + Cheb_xy_x(xcoor_)*Cheb_xy_y(ycoor_)
+                % Use OptimizedParams if available, otherwise use ConfigOptimized
+                if hasPythonFieldCorrections
+                    PythonParams = OptimizedParams;
+                else
+                    PythonParams = ConfigOptimized.FieldCorrection.Python;
+                end
+                
+                % X Chebyshev (order 4): coeffs = [0, kx, kx2, kx3, kx4]
+                kx_coeffs = [0, getFieldValue(PythonParams, 'kx', 0), getFieldValue(PythonParams, 'kx2', 0), ...
+                           getFieldValue(PythonParams, 'kx3', 0), getFieldValue(PythonParams, 'kx4', 0)];
+                Cheb_x_val = evaluateChebyshevDirect(X_norm, kx_coeffs);
+                Cheb_x_val = evaluateChebyshevDirect(X_norm, kx_coeffs);
+                
+                % Y Chebyshev (order 4): coeffs = [0, ky, ky2, ky3, ky4]  
+                ky_coeffs = [0, getFieldValue(PythonParams, 'ky', 0), getFieldValue(PythonParams, 'ky2', 0), ...
+                           getFieldValue(PythonParams, 'ky3', 0), getFieldValue(PythonParams, 'ky4', 0)];
+                Cheb_y_val = evaluateChebyshevDirect(Y_norm, ky_coeffs);
+                 Cheb_x_val = evaluateChebyshevDirect(X_norm, kx_coeffs);
+                
+                % XY cross-term (order 1): Cheb_xy_x and Cheb_xy_y both use [0, kxy]
+                kxy = getFieldValue(PythonParams, 'kxy', 0);
+                Cheb_xy_x_val = evaluateChebyshevDirect(X_norm, [0, kxy]);
+                Cheb_xy_y_val = evaluateChebyshevDirect(Y_norm, [0, kxy]);
+          
+                
+                % Constant terms
+                kx0 = getFieldValue(PythonParams, 'kx0', 0);
+                % ky0 is fixed at 0 in Python, but include for completeness
+                ky0 = getFieldValue(PythonParams, 'ky0', 0);
+                
+                % Python field correction formula (line 388)
+                FieldCorrection_mag = Cheb_x_val + Cheb_y_val + kx0 + ky0 + Cheb_xy_x_val * Cheb_xy_y_val;
+                
             else
-                % Fallback: evaluate Chebyshev manually
-                FieldCorrection = evaluateChebyshevManual(X_norm, Y_norm, cx, cy);
+                 FieldCorrection_mag = 0;   
+             %   FieldCorrection_mag = evaluateChebyshevManual(X_norm, Y_norm, cx, cy);
             end
         end
         
-        % Calculate position-dependent zero-point magnitude
-        if hasFieldCorrections
-            % Field correction is applied as magnitude offset (additive in log space)
-            MAG_ZP(i) = ZP_magnitude + 2.5 * log10(FieldCorrection);
-        else
-            % No field corrections, use base zero-point
-            MAG_ZP(i) = ZP_magnitude;
-        end
+        % Store field correction separately
+        FIELD_CORRECTION_MAG(i) = FieldCorrection_mag;
         
-        % Calculate AB magnitude for this star using flux-based formula:
-         MAG_AB = -2.5*log10(FLUX_PSF/Dt) + MAG_ZP
+        % Calculate position-dependent zero-point magnitude
+        % Field correction is already in magnitude space, so just add it
+        MAG_ZP(i) = ZP_magnitude + FieldCorrection_mag;
+        
+       
         if ismember('FLUX_PSF', LASTData.Properties.VariableNames)
             FLUX_PSF_value = LASTData.FLUX_PSF(i);
-            if ~isnan(FLUX_PSF_value) && FLUX_PSF_value > 0
+
+       % Calculate AB magnitude for this star using flux-based formula:
+        % MAG_AB = -2.5*log10(FLUX_PSF_value/Dt) + MAG_ZP;
+           if ~isnan(FLUX_PSF_value) && FLUX_PSF_value > 0
                 % Get exposure time (Dt)
-       %         if ~isnan(Metadata.ExpTime)
-       %             Dt = Metadata.ExpTime;
-       %         else
-       %             Dt = 20.0;  % Default exposure time
-       %         end
-       %         % Calculate AB magnitude from flux
-       %         MAG_PSF_AB(i) = -2.5 * log10(FLUX_PSF_value / Dt) + MAG_ZP(i);
-       %     else
-       %         MAG_PSF_AB(i) = NaN;
-       %     end
+           %    if ~isnan(Metadata.ExpTime)
+           %         Dt = Metadata.ExpTime;
+           %         Dt = 20.0;
+           %     else
+           %         Dt = 20.0;  % Default exposure time
+           %     end
+                % Calculate AB magnitude from flux
+                MAG_PSF_AB(i) = -2.5 * log10(FLUX_PSF_value / Dt) + MAG_ZP(i);
+            else
+                MAG_PSF_AB(i) = NaN;
+            end
         elseif ismember('MAG_PSF', LASTData.Properties.VariableNames)
             % Fallback: use instrumental magnitude if flux not available
             MAG_PSF_value = LASTData.MAG_PSF(i);
@@ -305,6 +363,7 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
     % Add new columns to the MATLAB table
     LASTData.MAG_ZP = MAG_ZP;
     LASTData.MAG_PSF_AB = MAG_PSF_AB;
+    LASTData.FIELD_CORRECTION_MAG = FIELD_CORRECTION_MAG;
     
     % Return the enhanced MATLAB table as output
     CatalogAB = LASTData;
@@ -335,8 +394,24 @@ end
 
 function ConfigOptimized = updateConfigWithOptimizedParams(Config, OptimizedParams)
     % Update Config structure with optimized parameters
+    % Preserves existing Config.FieldCorrection if no field params in OptimizedParams
     
     ConfigOptimized = Config;
+    
+    % Ensure FieldCorrection structure exists and is properly initialized
+    if ~isfield(ConfigOptimized, 'FieldCorrection')
+        ConfigOptimized.FieldCorrection = struct('Enable', false, 'Mode', 'none');
+    end
+    if ~isfield(ConfigOptimized.FieldCorrection, 'Python')
+        ConfigOptimized.FieldCorrection.Python = struct();
+    end
+    if ~isfield(ConfigOptimized.FieldCorrection, 'Simple')
+        ConfigOptimized.FieldCorrection.Simple = struct();
+    end
+    
+    % Track if we find field correction params
+    hasPythonFieldParams = false;
+    hasSimpleFieldParams = false;
     
     % Map optimized parameters to Config structure
     paramNames = fieldnames(OptimizedParams);
@@ -368,34 +443,142 @@ function ConfigOptimized = updateConfigWithOptimizedParams(Config, OptimizedPara
                 ConfigOptimized.Utils.SkewedGaussianModel.Default_sigma = paramValue;
             case 'Gamma'
                 ConfigOptimized.Utils.SkewedGaussianModel.Default_gamma = paramValue;
-            % Chebyshev coefficients are handled separately
+            % Python field correction parameters
+            case 'kx0'
+                ConfigOptimized.FieldCorrection.Python.kx0 = paramValue;
+                ConfigOptimized.FieldCorrection.Enable = true;
+                ConfigOptimized.FieldCorrection.Mode = 'python';
+                hasPythonFieldParams = true;
+            case 'ky0'
+                ConfigOptimized.FieldCorrection.Python.ky0 = paramValue;
+                hasPythonFieldParams = true;
+            case 'kx'
+                ConfigOptimized.FieldCorrection.Python.kx = paramValue;
+                hasPythonFieldParams = true;
+            case 'ky'
+                ConfigOptimized.FieldCorrection.Python.ky = paramValue;
+                hasPythonFieldParams = true;
+            case 'kx2'
+                ConfigOptimized.FieldCorrection.Python.kx2 = paramValue;
+                hasPythonFieldParams = true;
+            case 'ky2'
+                ConfigOptimized.FieldCorrection.Python.ky2 = paramValue;
+                hasPythonFieldParams = true;
+            case 'kx3'
+                ConfigOptimized.FieldCorrection.Python.kx3 = paramValue;
+                hasPythonFieldParams = true;
+            case 'ky3'
+                ConfigOptimized.FieldCorrection.Python.ky3 = paramValue;
+                hasPythonFieldParams = true;
+            case 'kx4'
+                ConfigOptimized.FieldCorrection.Python.kx4 = paramValue;
+                hasPythonFieldParams = true;
+            case 'ky4'
+                ConfigOptimized.FieldCorrection.Python.ky4 = paramValue;
+                hasPythonFieldParams = true;
+            case 'kxy'
+                ConfigOptimized.FieldCorrection.Python.kxy = paramValue;
+                hasPythonFieldParams = true;
+            % Simple Chebyshev coefficients
+            case 'cx0'
+                ConfigOptimized.FieldCorrection.Simple.cx0 = paramValue;
+                ConfigOptimized.FieldCorrection.Enable = true;
+                ConfigOptimized.FieldCorrection.Mode = 'simple';
+                hasSimpleFieldParams = true;
+            case 'cx1'
+                ConfigOptimized.FieldCorrection.Simple.cx1 = paramValue;
+                hasSimpleFieldParams = true;
+            case 'cx2'
+                ConfigOptimized.FieldCorrection.Simple.cx2 = paramValue;
+                hasSimpleFieldParams = true;
+            case 'cx3'
+                ConfigOptimized.FieldCorrection.Simple.cx3 = paramValue;
+                hasSimpleFieldParams = true;
+            case 'cx4'
+                ConfigOptimized.FieldCorrection.Simple.cx4 = paramValue;
+                hasSimpleFieldParams = true;
+            case 'cy0'
+                ConfigOptimized.FieldCorrection.Simple.cy0 = paramValue;
+                hasSimpleFieldParams = true;
+            case 'cy1'
+                ConfigOptimized.FieldCorrection.Simple.cy1 = paramValue;
+                hasSimpleFieldParams = true;
+            case 'cy2'
+                ConfigOptimized.FieldCorrection.Simple.cy2 = paramValue;
+                hasSimpleFieldParams = true;
+            case 'cy3'
+                ConfigOptimized.FieldCorrection.Simple.cy3 = paramValue;
+                hasSimpleFieldParams = true;
+            case 'cy4'
+                ConfigOptimized.FieldCorrection.Simple.cy4 = paramValue;
+                hasSimpleFieldParams = true;
         end
     end
 end
 
 
-function FieldCorrection = evaluateChebyshevManual(X_norm, Y_norm, cx, cy)
-    % Manually evaluate Chebyshev polynomials for field correction
+%function FieldCorrection = evaluateChebyshevManual(X_norm, Y_norm, cx, cy)
+%    % Manually evaluate Chebyshev polynomials for field correction
     
-    % Chebyshev polynomials up to order 4
-    Tx = zeros(5, 1);
-    Tx(1) = 1;
-    Tx(2) = X_norm;
-    Tx(3) = 2*X_norm^2 - 1;
-    Tx(4) = 4*X_norm^3 - 3*X_norm;
-    Tx(5) = 8*X_norm^4 - 8*X_norm^2 + 1;
+%    % Chebyshev polynomials up to order 4
+%    Tx = zeros(5, 1);
+%    Tx(1) = 1;
+%    Tx(2) = X_norm;
+%    Tx(3) = 2*X_norm^2 - 1;
+%    Tx(4) = 4*X_norm^3 - 3*X_norm;
+%    Tx(5) = 8*X_norm^4 - 8*X_norm^2 + 1;
     
-    Ty = zeros(5, 1);
-    Ty(1) = 1;
-    Ty(2) = Y_norm;
-    Ty(3) = 2*Y_norm^2 - 1;
-    Ty(4) = 4*Y_norm^3 - 3*Y_norm;
-    Ty(5) = 8*Y_norm^4 - 8*Y_norm^2 + 1;
+%    Ty = zeros(5, 1);
+%    Ty(1) = 1;
+%    Ty(2) = Y_norm;
+%    Ty(3) = 2*Y_norm^2 - 1;
+%    Ty(4) = 4*Y_norm^3 - 3*Y_norm;
+%    Ty(5) = 8*Y_norm^4 - 8*Y_norm^2 + 1;
     
     % Combine corrections
-    CorrectionX = Tx' * cx;
-    CorrectionY = Ty' * cy;
+%    CorrectionX = Tx' * cx;
+%    CorrectionY = Ty' * cy;
     
-    % Field correction as exponential (ensures positive)
-    FieldCorrection = exp(CorrectionX + CorrectionY);
+    % Field correction in magnitude space (no exponential)
+%    FieldCorrection = CorrectionX + CorrectionY;
+%end
+
+function result = evaluateChebyshevDirect(x, coeffs)
+    % Direct evaluation of Chebyshev polynomial without exponential
+    % x: input value (scalar, already normalized to [-1, 1])
+    % coeffs: Chebyshev coefficients [c0, c1, c2, ...]
+    
+    n = length(coeffs);
+    if n == 0
+        result = 0;
+        return;
+    end
+    
+    % Initialize Chebyshev polynomials
+    T = zeros(n, 1);
+    
+    % T_0(x) = 1
+    T(1) = 1;
+    
+    % T_1(x) = x
+    if n >= 2
+        T(2) = x;
+    end
+    
+    % T_n(x) = 2*x*T_{n-1}(x) - T_{n-2}(x)
+    for k = 3:n
+        T(k) = 2 * x * T(k-1) - T(k-2);
+    end
+    
+    % Sum with coefficients
+    result = sum(T .* coeffs(:));
+end
+
+function value = getFieldValue(structure, fieldname, defaultValue)
+    % Safe field extraction with default value
+    if isfield(structure, fieldname)
+        value = structure.(fieldname);
+    else
+        value = defaultValue;
+    end
 end

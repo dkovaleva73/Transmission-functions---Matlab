@@ -20,7 +20,7 @@ function totalFlux = calculateTotalFluxCalibrators(Wavelength, TransmittedFlux, 
         TransmittedFlux double = []                   % Transmitted flux spectrum (flux * transmission already applied)
         Metadata = []                                 % Metadata structure from findCalibratorsWithCoords
         Args.dt = NaN                          % Time interval (seconds)
-        Args.Ageom double = pi * (0.1397^2)           % Geometric area (m²) - LAST telescope aperture
+        Args.Ageom double = []                        % Geometric area (m²) - uses Config.Instrumental.Telescope.Aperture_area_m2 if empty
     end
     
 
@@ -49,6 +49,14 @@ function totalFlux = calculateTotalFluxCalibrators(Wavelength, TransmittedFlux, 
         Dt = 20.0;  % Default 
  %   else 
  %     Dt = 1.0; 
+    end
+    
+    % Determine Ageom: use provided value or get from Config
+    if isempty(Args.Ageom)
+        Config = transmission.inputConfig();
+        Ageom = Config.Instrumental.Telescope.Aperture_area_m2;
+    else
+        Ageom = Args.Ageom;
     end
 % disp(Dt);    
     % Physical constants using AstroPack
@@ -79,7 +87,7 @@ function totalFlux = calculateTotalFluxCalibrators(Wavelength, TransmittedFlux, 
     %        disp(B);
             % Calculate total flux in photons. Normalization ~ 0.5 to fit
             % the scale
-            totalFlux(i) = 0.5* Dt * Args.Ageom * A / B;
+            totalFlux(i) = 0.5* Dt * Ageom * A / B;
         end
     else
         % Single spectrum - process as before
@@ -95,7 +103,7 @@ function totalFlux = calculateTotalFluxCalibrators(Wavelength, TransmittedFlux, 
         
         % Calculate total flux in photons. Normalization ~ 0.5 to fit the
         % scale.
-        totalFlux =  0.5 * Dt * Args.Ageom * A / B;
+        totalFlux =  0.5 * Dt * Ageom * A / B;
     end
 % toc   
 end

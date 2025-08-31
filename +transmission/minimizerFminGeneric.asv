@@ -588,12 +588,11 @@ function ChebyshevModel = setupChebyshevModel(CalibData, order)
     ChebyshevModel.XCoords = CalibData.LASTData.X;
     ChebyshevModel.YCoords = CalibData.LASTData.Y;
     
-    % Normalize coordinates to [-1, 1] using rescaleInputData
-    min_coor = Config.Instrumental.Detector.Min_coordinate;
-    max_coor = Config.Instrumental.Detector.Max_coordinate;
-    
-    ChebyshevModel.XNorm = transmission.utils.rescaleInputData(ChebyshevModel.XCoords, min_coor, max_coor, [], [], Config);
-    ChebyshevModel.YNorm = transmission.utils.rescaleInputData(ChebyshevModel.YCoords, min_coor, max_coor, [], [], Config);
+    % Normalize coordinates to [-1, 1]
+    ChebyshevModel.XNorm = 2 * (ChebyshevModel.XCoords - min(ChebyshevModel.XCoords)) / ...
+                           (max(ChebyshevModel.XCoords) - min(ChebyshevModel.XCoords)) - 1;
+    ChebyshevModel.YNorm = 2 * (ChebyshevModel.YCoords - min(ChebyshevModel.YCoords)) / ...
+                           (max(ChebyshevModel.YCoords) - min(ChebyshevModel.YCoords)) - 1;
 end
 
 function FieldCorrection = evaluateChebyshev(ChebyshevModel, LASTData, Config)

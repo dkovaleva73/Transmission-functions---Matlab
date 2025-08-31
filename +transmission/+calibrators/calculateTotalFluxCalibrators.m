@@ -19,7 +19,7 @@ function totalFlux = calculateTotalFluxCalibrators(Wavelength, TransmittedFlux, 
         TransmittedFlux double = []                   % Transmitted flux spectrum (flux * transmission already applied) - double array [Nspec x Nwavelength]
         Metadata = []                                 % Metadata structure from findCalibratorsWithCoords
         Args.dt = 20                                  % Time interval (seconds)
-        Args.Ageom double = pi * (0.1397^2)           % Geometric area (m²) - LAST telescope aperture
+        Args.Ageom double = []                        % Geometric area (m²) - uses Config.Instrumental.Telescope.Aperture_area_m2 if empty
         Args.Norm_ = transmission.inputConfig().General.Norm_ % Normalization constant, to be fitted
         Args.ZeroPointMode logical = false            % If true: B=H, Dt=1 for zero-point calculation
     end
@@ -50,6 +50,14 @@ function totalFlux = calculateTotalFluxCalibrators(Wavelength, TransmittedFlux, 
  %   else 
  %     Dt = 1.0; 
     end
+    
+    % Determine Ageom: use provided value or get from Config
+    if isempty(Args.Ageom)
+        Config = transmission.inputConfig();
+        Ageom = Config.Instrumental.Telescope.Aperture_area_m2;
+    else
+        Ageom = Args.Ageom;
+    end
    
     % Physical constants using AstroPack
     H = constant.h('SI');      % Planck constant [SI]
@@ -63,9 +71,19 @@ function totalFlux = calculateTotalFluxCalibrators(Wavelength, TransmittedFlux, 
         return;
     end
     
-    % Ensure TransmittedFlux is 2D
-    if isvector(TransmittedFlux)
-        TransmittedFlux = TransmittedFlux(:)'; % Row vector for single spectrum
+    % Convert cell array to double matrix (from applyTransmissionToCalibrators)
+    if iscell(TransmittedFlux)
+        numSpectra = length(TransmittedFlux);
+        if numSpectra > 0
+            numWavelengths = length(TransmittedFlux{1});
+            doubleArray = zeros(numSpectra, numWavelengths);
+            for i = 1:numSpectra
+                doubleArray(i, :) = TransmittedFlux{i}(:)';
+            end
+            TransmittedFlux = doubleArray;
+        else
+            TransmittedFlux = [];
+        end
     end
     
     Nspectra = size(TransmittedFlux, 1);
@@ -89,7 +107,7 @@ function totalFlux = calculateTotalFluxCalibrators(Wavelength, TransmittedFlux, 
         else
             % Normal mode: convert to photons
             B = H * C * 1e9;  % H*C with nm to m conversion
-            totalFlux(i) = Args.Norm_ * Dt * Args.Ageom * A / B;
+            totalFlux(i) = Args.Norm_ * Dt * Ageom * A / B;
         end
     end
 % toc   

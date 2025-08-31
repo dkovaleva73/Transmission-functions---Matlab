@@ -48,18 +48,13 @@ function [SpecTrans, Wavelength, TransFunc] = applyTransmissionToCalibrators(Spe
 %tic
      % Define wavelength grids
     Gaiawvl = Config.Utils.Gaia_wavelength;
-  %  Gaiawvl = Gaiawvl(:);
-
     ZenithAngle = acosd(1/Metadata.airMassFromLAST); 
     Config.Atmospheric.Zenith_angle_deg = ZenithAngle;
-%    disp(ZenithAngle);
-%    disp(Metadata.airMassFromLAST);
        
     % Target wavelength grid: 300-1100 nm in 2 nm steps (401 points)
     % This matches the default transmission function wavelength grid
     Wavelength = transmission.utils.makeWavelengthArray(Config);
-   %  Wavelength = Wavelength(:); % Make column vector
-    
+     
     % Handle zero-point mode
     if Args.ZeroPointMode
         % For zero-point: use flat Fnu spectrum
