@@ -1,4 +1,4 @@
-function [TotalFlux, SpecTrans, Wavelength, Metadata, Results, DiffFlux] = costFuncMextion(Config, Args)
+function [TotalFlux, SpecTrans, Wavelength, Metadata, Results, DiffFlux] = costFunction(Config, Args)
     % Complete calibrator processing workflow for transmission calculations
     % Performs the full pipeline: LAST catalog → Gaia cross-matching → transmission → flux calculation
     % Input :  - Config - (optional) Configuration structure from transmission.inputConfig()

@@ -43,7 +43,7 @@ try
     testParams.ky2 = -0.008;  % Quadratic Y
     testParams.kxy = 0.015;   % Cross term
     
-    CatalogAB = transmission.photometry.calculateAbsolutePhotometry(testParams, Config, 'Verbose', false);
+    CatalogAB = transmission.calculateAbsolutePhotometry(testParams, Config, 'Verbose', false);
     
     % Analyze results
     mag_range = max(CatalogAB.MAG_ZP) - min(CatalogAB.MAG_ZP);

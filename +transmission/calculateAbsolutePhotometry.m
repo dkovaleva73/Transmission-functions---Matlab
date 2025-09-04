@@ -12,12 +12,13 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
     %           - All original LAST catalog columns
     %           - 'MAG_ZP' - Zero-point magnitude for each star (position-dependent)
     %           - 'MAG_PSF_AB' - AB absolute magnitude for each star
+    %           - 'FIELD_CORRECTION_MAG' - Field correction applied
     % Author: D. Kovaleva (Aug 2025)
     % Example:
     %   Config = transmission.inputConfig();
     %   optimizer = transmission.TransmissionOptimizer(Config);
     %   finalParams = optimizer.runFullSequence();
-    %   CatalogAB = transmission.photometry.calculateAbsolutePhotometry(finalParams, Config);
+    %   CatalogAB = transmission.calculateAbsolutePhotometry(finalParams, Config);
     
     arguments
         OptimizedParams struct
@@ -55,11 +56,11 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
     end
 
     %Load AstroCatalog
-       AC = AstroCatalog(AstroCatFile);
+%       AC = AstroCatalog(AstroCatFile);
        
 
     % Get the catalog for specified image
-%    AC = AI(Args.ImageNum).CatData;
+    AC = AI(Args.ImageNum).CatData;
     
     % Extract LAST catalog data as a MATLAB table
     % Check what format the data is in
@@ -160,10 +161,8 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
     if Args.Verbose
         fprintf('Loading absorption data...\n');
     end
-    AllSpecies = {'H2O', 'O3UV', 'O2', 'CH4', 'CO', 'N2O', 'CO2', 'N2', 'O4', ...
-                  'NH3', 'NO', 'NO2', 'SO2U', 'SO2I', 'HNO3', 'NO3', 'HNO2', ...
-                  'CH2O', 'BrO', 'ClNO'};
-    AbsorptionData = transmission.data.loadAbsorptionData([], AllSpecies, false);
+    % Get absorption data from Config (already cached in memory)
+    AbsorptionData = Config.AbsorptionData;
     
     % Calculate zero-point flux for AB system
     if Args.Verbose
@@ -293,13 +292,13 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
                 kx_coeffs = [0, getFieldValue(PythonParams, 'kx', 0), getFieldValue(PythonParams, 'kx2', 0), ...
                            getFieldValue(PythonParams, 'kx3', 0), getFieldValue(PythonParams, 'kx4', 0)];
                 Cheb_x_val = evaluateChebyshevDirect(X_norm, kx_coeffs);
-                Cheb_x_val = evaluateChebyshevDirect(X_norm, kx_coeffs);
+             %   Cheb_x_val = evaluateChebyshevDirect(X_norm, [0, -0.0024413998425085737, -0.0007724793006609332, -0.001278415563733759, 0.0015160592703367115]);
                 
                 % Y Chebyshev (order 4): coeffs = [0, ky, ky2, ky3, ky4]  
                 ky_coeffs = [0, getFieldValue(PythonParams, 'ky', 0), getFieldValue(PythonParams, 'ky2', 0), ...
                            getFieldValue(PythonParams, 'ky3', 0), getFieldValue(PythonParams, 'ky4', 0)];
                 Cheb_y_val = evaluateChebyshevDirect(Y_norm, ky_coeffs);
-                 Cheb_x_val = evaluateChebyshevDirect(X_norm, kx_coeffs);
+             %   Cheb_y_val = evaluateChebyshevDirect(Y_norm, [0, -0.0014053779943274947, 0.0011508991911419741, -0.00020214313691013786, -0.0011522339536700343]);
                 
                 % XY cross-term (order 1): Cheb_xy_x and Cheb_xy_y both use [0, kxy]
                 kxy = getFieldValue(PythonParams, 'kxy', 0);

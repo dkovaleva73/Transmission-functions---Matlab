@@ -22,7 +22,7 @@ try
     Config.FieldCorrection.Python = OptimizedParams;
     
     % Test calculateAbsolutePhotometry 
-    CatalogAB = transmission.photometry.calculateAbsolutePhotometry(OptimizedParams, Config, ...
+    CatalogAB = transmission.calculateAbsolutePhotometry(OptimizedParams, Config, ...
         'Verbose', false);
     
     % Analyze field variation

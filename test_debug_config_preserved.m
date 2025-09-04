@@ -19,7 +19,7 @@ try
     
     % Temporarily modify calculateAbsolutePhotometry to output ConfigOptimized
     % We'll do this by checking the result
-    CatalogAB = transmission.photometry.calculateAbsolutePhotometry(OptimizedParams, Config, 'Verbose', false);
+    CatalogAB = transmission.calculateAbsolutePhotometry(OptimizedParams, Config, 'Verbose', false);
     
     % Check if field correction was applied
     fc_vals = CatalogAB.FIELD_CORRECTION_MAG;
@@ -36,7 +36,7 @@ try
     OptimizedParams2.kx0 = 0.15;
     OptimizedParams2.kx = 0.05;
     
-    CatalogAB2 = transmission.photometry.calculateAbsolutePhotometry(OptimizedParams2, Config, 'Verbose', false);
+    CatalogAB2 = transmission.calculateAbsolutePhotometry(OptimizedParams2, Config, 'Verbose', false);
     
     fc_vals2 = CatalogAB2.FIELD_CORRECTION_MAG;
     fprintf('Field correction results:\n');

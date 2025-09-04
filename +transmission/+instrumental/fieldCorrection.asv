@@ -41,8 +41,8 @@ function Field_corr = fieldCorrection(X_coord, Y_coord, Config, Args)
     % Normalize coordinates to [-1, 1] range using detector dimensions from Config
     min_coor = Config.Instrumental.Detector.Min_coordinate;
     max_coor = Config.Instrumental.Detector.Max_coordinate;
-    lower_bound = Config.Utils.RescaleInputData.Target_min;
-    upper_bound = Config.Utils.RescaleInputData.Target_max;
+    lower_bound = Config.Instrumental.Detector.Target_min;
+    upper_bound = Config.Instrumental.Detector.Target_max;
     
     Xcoor_ = transmission.utils.rescaleInputData(X_coord, min_coor, max_coor, lower_bound, upper_bound);
     Ycoor_ = transmission.utils.rescaleInputData(Y_coord, min_coor, max_coor, lower_bound, upper_bound);

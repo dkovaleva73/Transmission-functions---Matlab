@@ -10,13 +10,13 @@ try
     coeffs = [0, 0.05, 0, 0, 0];  % Just linear term
     
     % Direct evaluation
-    result = transmission.photometry.calculateAbsolutePhotometry.evaluateChebyshevDirect(x_norm, coeffs);
+    result = transmission.calculateAbsolutePhotometry.evaluateChebyshevDirect(x_norm, coeffs);
     fprintf('evaluateChebyshevDirect(0.5, [0, 0.05, 0, 0, 0]) = %.4f\n', result);
     fprintf('Expected: 0.5 * 0.05 = 0.025\n');
     
     % Test constant term
     coeffs2 = [0.1, 0, 0, 0, 0];  % Just constant
-    result2 = transmission.photometry.calculateAbsolutePhotometry.evaluateChebyshevDirect(0, coeffs2);
+    result2 = transmission.calculateAbsolutePhotometry.evaluateChebyshevDirect(0, coeffs2);
     fprintf('\nevaluateChebyshevDirect(0, [0.1, 0, 0, 0, 0]) = %.4f\n', result2);
     fprintf('Expected: 0.1\n');
     
@@ -33,11 +33,11 @@ catch ME
     OptimizedParams = struct();
     OptimizedParams.Norm_ = 0.8;
     
-    CatalogAB = transmission.photometry.calculateAbsolutePhotometry(OptimizedParams, Config, 'Verbose', false);
+    CatalogAB = transmission.calculateAbsolutePhotometry(OptimizedParams, Config, 'Verbose', false);
     
     % Compare ZP with and without field correction
     Config2 = transmission.inputConfig();  % No field correction
-    CatalogAB2 = transmission.photometry.calculateAbsolutePhotometry(OptimizedParams, Config2, 'Verbose', false);
+    CatalogAB2 = transmission.calculateAbsolutePhotometry(OptimizedParams, Config2, 'Verbose', false);
     
     zp_diff = mean(CatalogAB.MAG_ZP) - mean(CatalogAB2.MAG_ZP);
     fprintf('Difference in mean ZP (with kx0=1.0): %.4f\n', zp_diff);

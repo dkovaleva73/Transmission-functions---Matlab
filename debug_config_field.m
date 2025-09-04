@@ -20,7 +20,7 @@ try
     OptimizedParams.Norm_ = 0.8;
     
     % Add verbose output temporarily
-    CatalogAB = transmission.photometry.calculateAbsolutePhotometry(OptimizedParams, Config, 'Verbose', true);
+    CatalogAB = transmission.calculateAbsolutePhotometry(OptimizedParams, Config, 'Verbose', true);
     
     fc_range = max(CatalogAB.FIELD_CORRECTION_MAG) - min(CatalogAB.FIELD_CORRECTION_MAG);
     fprintf('\nField correction range: %.4f mag\n', fc_range);

@@ -31,10 +31,14 @@ function [ClippedCalibData, outlierMask] = sigmaClip(CalibData, residuals, thres
     ClippedCalibData.Spec = CalibData.Spec(~outlierMask, :);
     ClippedCalibData.Mag = CalibData.Mag(~outlierMask);
     
-    % Handle coordinate structure
+    % Handle coordinate structure (array of structs)
     if isfield(CalibData, 'Coords')
         coords = CalibData.Coords;
-        if isstruct(coords) && ~isempty(fieldnames(coords))
+        if isstruct(coords) && numel(coords) == length(outlierMask)
+            % Coords is an array of structs, clip it directly
+            ClippedCalibData.Coords = coords(~outlierMask);
+        elseif isstruct(coords) && ~isempty(fieldnames(coords))
+            % Coords is a struct with array fields
             coordFields = fieldnames(coords);
             for i = 1:length(coordFields)
                 fieldName = coordFields{i};

@@ -28,6 +28,8 @@ classdef TransmissionOptimizer < handle
             arguments
                 Config = transmission.inputConfig()
                 Args.Sequence string = "DefaultSequence"
+            %    Args.Sequence string = "AtmosphericOnly"
+            %    Args.Sequence string = "FieldCorrectionOnly"
                 Args.SigmaClippingEnabled logical = true
                 Args.Verbose logical = true
                 Args.SaveIntermediateResults logical = false
@@ -100,7 +102,7 @@ classdef TransmissionOptimizer < handle
             % Load initial calibrator data for specified field
             obj.loadCalibratorData(fieldNum);
             
-            % Preload absorption data for efficiency
+            % Preload absorption data for efficiency ---CHECK!!!!!!!!!!!!!!
             obj.loadAbsorptionData();
             
             % Run each stage
@@ -111,6 +113,8 @@ classdef TransmissionOptimizer < handle
                 if obj.Verbose
                     fprintf('--- STAGE %d: %s ---\n', stageIdx, stage.name);
                     fprintf('Description: %s\n', stage.description);
+                    fprintf('Free parameters: %s\n', strjoin(string(stage.freeParams), ', '));
+                    
                 end
                 
                 % Run the stage
@@ -121,9 +125,11 @@ classdef TransmissionOptimizer < handle
                 
                 % Update optimized parameters
                 obj.updateOptimizedParams(stageResult.OptimalParams);
-                
+                disp(stageResult.OptimalParams);
                 if obj.Verbose
-                    fprintf('Stage %d completed. Cost: %.4e\n\n', stageIdx, stageResult.Fval);
+                    fprintf('Stage %d completed. Cost: %.4e\n', stageIdx, stageResult.Fval);
+                    
+                    fprintf('\n');
                 end
             end
             
@@ -132,7 +138,6 @@ classdef TransmissionOptimizer < handle
             
             if obj.Verbose
                 fprintf('=== OPTIMIZATION SEQUENCE COMPLETE ===\n');
-                obj.printFinalParameters(finalParams);
             end
         end
         
@@ -149,6 +154,7 @@ classdef TransmissionOptimizer < handle
             
             % Use previously optimized parameters as fixed
             Args.FixedParams = obj.OptimizedParams;
+            
             
             % Handle sigma clipping
             if isfield(stage, 'sigmaClipping') && any(stage.sigmaClipping) && obj.SigmaClippingEnabled
@@ -220,7 +226,13 @@ classdef TransmissionOptimizer < handle
             
             [OptimalParams, Fval, ExitFlag, Output, ResultData] = ...
                 transmission.minimizerFminGeneric(obj.Config, argCell{:});
-            
+            disp(Args.FreeParams);
+            disp(Args.FixedParams);
+            disp(Args.InputData);
+            disp(OptimalParams);
+            disp(Fval);
+            disp(Output);
+            disp(ResultData);
             % Update calibrator data if sigma clipping was applied
             if Args.SigmaClipping
                 obj.CalibratorData = ResultData.CalibData;
@@ -249,10 +261,9 @@ classdef TransmissionOptimizer < handle
                 fprintf('Loading calibrator data for field %d...\n', fieldNum);
             end
             
-            CatalogFile = obj.Config.Data.LAST_AstroImage_file;
+      %     CatalogFile = obj.Config.Data.LAST_AstroImage_file;
             SearchRadius = obj.Config.Data.Search_radius_arcsec;
-              %  CatalogFile = Config.Data.LAST_AstroImage_file;
-         %   CatalogFile = obj.Config.Data.LAST_catalog_file;
+            CatalogFile = obj.Config.Data.LAST_catalog_file;
     
     
       %  [Spec, Mag, Coords, LASTData, Metadata] = transmission.data.findCalibratorsWithCoords(...
@@ -275,19 +286,16 @@ classdef TransmissionOptimizer < handle
         end
         
         function loadAbsorptionData(obj)
-            % Preload absorption data for efficiency
+            % Get absorption data from Config (already cached in memory)
             
             if obj.Verbose
-                fprintf('Loading absorption data...\n');
+                fprintf('Using cached absorption data from Config...\n');
             end
             
-            AllSpecies = {'H2O', 'O3UV', 'O2', 'CH4', 'CO', 'N2O', 'CO2', 'N2', 'O4', ...
-                          'NH3', 'NO', 'NO2', 'SO2U', 'SO2I', 'HNO3', 'NO3', 'HNO2', ...
-                          'CH2O', 'BrO', 'ClNO'};
-            obj.AbsorptionData = transmission.data.loadAbsorptionData([], AllSpecies, false);
+            obj.AbsorptionData = obj.Config.AbsorptionData;
             
             if obj.Verbose
-                fprintf('Absorption data loaded\n');
+                fprintf('Absorption data ready\n');
             end
         end
         
@@ -300,48 +308,10 @@ classdef TransmissionOptimizer < handle
             end
         end
         
-        function printFinalParameters(obj, params)
-            % Print final optimized parameters
-            
-            fprintf('\nFinal Optimized Parameters:\n');
-            fprintf('---------------------------\n');
-            
-            % Group parameters by category for better readability
-            categories = struct();
-            categories.General = {};
-            categories.Atmospheric = {};
-            categories.Instrumental = {};
-            categories.FieldCorrection = {};
-            
-            paramNames = fieldnames(params);
-            for i = 1:length(paramNames)
-                paramName = paramNames{i};
-                if startsWith(paramName, 'Norm_')
-                    categories.General{end+1} = paramName;
-                elseif ismember(paramName, {'Tau_aod500', 'Alpha', 'Pwv_cm', 'Dobson_units', 'Temperature_C', 'Pressure'})
-                    categories.Atmospheric{end+1} = paramName;
-                elseif ismember(paramName, {'Center', 'Amplitude', 'Sigma', 'Gamma'})
-                    categories.Instrumental{end+1} = paramName;
-                elseif startsWith(paramName, 'c')
-                    categories.FieldCorrection{end+1} = paramName;
-                end
-            end
-            
-            % Print by category
-            categoryNames = fieldnames(categories);
-            for i = 1:length(categoryNames)
-                catName = categoryNames{i};
-                catParams = categories.(catName);
-                if ~isempty(catParams)
-                    fprintf('%s:\n', catName);
-                    for j = 1:length(catParams)
-                        paramName = catParams{j};
-                        fprintf('  %s: %.6f\n', paramName, params.(paramName));
-                    end
-                    fprintf('\n');
-                end
-            end
-        end
+        
+        
+        
+        
         
         function saveResults(obj, filename)
             % Save optimization results to file
@@ -453,6 +423,64 @@ classdef TransmissionOptimizer < handle
                 stage = [];
             end
         end
+        
+        function CalibratorTable = getCalibratorResults(obj)
+            % Create a table with calibrator data and final DiffMag values
+            % Output: CalibratorTable - MATLAB table containing:
+            %         - All LAST catalog data for calibrators
+            %         - DIFF_MAG - Final optimization residuals
+            %         - Gaia coordinates and other calibrator-specific data
+            
+            if isempty(obj.Results)
+                error('No optimization results available. Run optimization first.');
+            end
+            
+            % Get the final stage results (contains final DiffMag)
+            finalStageResult = obj.Results{end};
+            
+            if ~isfield(finalStageResult.ResultData, 'DiffMag')
+                error('No DiffMag found in optimization results');
+            end
+            
+            % Extract calibrator data and DiffMag
+            CalibData = finalStageResult.ResultData.CalibData;
+            DiffMag = finalStageResult.ResultData.DiffMag;
+            
+            % Create table from calibrator LAST data
+            CalibratorTable = CalibData.LASTData;
+            
+            % Add DiffMag column
+            CalibratorTable.DIFF_MAG = DiffMag;
+            
+            % Add Gaia coordinates if available
+            if ~isempty(CalibData.Coords)
+                Coords = CalibData.Coords;
+                numCoords = length(Coords);
+                numRows = height(CalibratorTable);
+                
+                if numCoords == numRows
+                    CalibratorTable.GAIA_RA = [Coords.Gaia_RA]';
+                    CalibratorTable.GAIA_DEC = [Coords.Gaia_Dec]';
+                    CalibratorTable.LAST_IDX = [Coords.LAST_idx]';
+                else
+                    warning('Coordinate array size (%d) does not match table height (%d). Skipping coordinates.', ...
+                            numCoords, numRows);
+                end
+            end
+            
+            % Add optimization metadata
+            CalibratorTable.Properties.Description = sprintf(...
+                'Calibrator data with DiffMag from %s optimization (Cost: %.4e)', ...
+                finalStageResult.StageName, finalStageResult.Fval);
+            
+            if obj.Verbose
+                fprintf('Calibrator table created:\n');
+                fprintf('  Calibrators: %d\n', height(CalibratorTable));
+                fprintf('  DiffMag mean: %.4f mag\n', mean(DiffMag));
+                fprintf('  DiffMag std: %.4f mag\n', std(DiffMag));
+                fprintf('  Final optimization cost: %.4e\n', finalStageResult.Fval);
+            end
+        end
     end
     
     methods (Static)
@@ -466,12 +494,16 @@ classdef TransmissionOptimizer < handle
             stages(1).sigmaClipping = true;
             stages(1).sigmaThreshold = 3.0;
             stages(1).sigmaIterations = 3;
+            stages(1).usePythonFieldModel = true;  % Use Python field correction model
+            stages(1).fixedParams = struct('ky0', 0);  % Keep ky0 fixed at 0
             stages(1).description = "Initial normalization with outlier removal";
             
             % Stage 2: Norm + QE center (no sigma clipping in fitutils.py)
             stages(2).name = "NormAndCenter";
             stages(2).freeParams = ["Norm_", "Center"];
             stages(2).sigmaClipping = false;
+            stages(2).usePythonFieldModel = true;  % Use Python field correction model
+            stages(2).fixedParams = struct('ky0', 0);  % Keep ky0 fixed at 0
             stages(2).description = "Optimize normalization and QE center";
             
             % Stage 3: Python-compliant field corrections 
@@ -489,12 +521,16 @@ classdef TransmissionOptimizer < handle
             stages(4).name = "NormRefinement";
             stages(4).freeParams = "Norm_";
             stages(4).sigmaClipping = false;
+            stages(4).usePythonFieldModel = true;  % Use Python field correction model
+            stages(4).fixedParams = struct('ky0', 0);  % Keep ky0 fixed at 0
             stages(4).description = "Refine normalization after field corrections";
             
             % Stage 5: Atmospheric parameters
             stages(5).name = "Atmospheric";
             stages(5).freeParams = ["Pwv_cm", "Tau_aod500"];
+            stages(5).usePythonFieldModel = true;  % Use Python field correction model
             stages(5).sigmaClipping = false;
+            stages(5).fixedParams = struct('ky0', 0);  % Keep ky0 fixed at 0
             stages(5).description = "Optimize water vapor and aerosol parameters";
         end
         
@@ -542,33 +578,27 @@ classdef TransmissionOptimizer < handle
         function stages = defineAtmosphericSequence()
             % Sequence focusing on atmospheric parameters
             
-            stages(1).name = "NormOnly";
+         % Stage 1: Normalize only with sigma clipping
+            stages(1).name = "NormOnly_Initial";
             stages(1).freeParams = "Norm_";
-            stages(1).sigmaClipping = false;
-            stages(1).description = "Basic normalization";
+            stages(1).sigmaClipping = true;
+            stages(1).sigmaThreshold = 3.0;
+            stages(1).sigmaIterations = 3;
+            stages(1).description = "Initial normalization with outlier removal";
             
-            stages(2).name = "WaterVapor";
-            stages(2).freeParams = "Pwv_cm";
+            % Stage 2: Norm + QE center (no sigma clipping in fitutils.py)
+            stages(2).name = "NormAndCenter";
+            stages(2).freeParams = ["Norm_", "Center"];
             stages(2).sigmaClipping = false;
-            stages(2).description = "Water vapor optimization";
+            stages(2).description = "Optimize normalization and QE center";
             
-            stages(3).name = "Aerosol";
-            stages(3).freeParams = ["Tau_aod500", "Alpha"];
-            stages(3).sigmaClipping = true;
-            stages(3).sigmaThreshold = 3.0;
-            stages(3).sigmaIterations = 2;
-            stages(3).description = "Aerosol parameters optimization";
-            
-            stages(4).name = "Ozone";
-            stages(4).freeParams = "Dobson_units";
-            stages(4).sigmaClipping = false;
-            stages(4).description = "Ozone column optimization";
-            
-            stages(5).name = "AllAtmospheric";
-            stages(5).freeParams = ["Pwv_cm", "Tau_aod500", "Alpha", "Dobson_units"];
-            stages(5).sigmaClipping = false;
-            stages(5).description = "Refine all atmospheric parameters together";
+            % Stage 3: Atmospheric parameters
+            stages(3).name = "Atmospheric";
+            stages(3).freeParams = ["Pwv_cm", "Tau_aod500"];
+            stages(3).sigmaClipping = false;
+            stages(3).description = "Optimize water vapor and aerosol parameters";
         end
+        
         
         function stages = defineQuickSequence()
             % Minimal sequence for quick calibration
@@ -596,23 +626,18 @@ classdef TransmissionOptimizer < handle
             stages(1).sigmaIterations = 2;
             stages(1).description = "Initial normalization";
             
-            stages(2).name = "LowOrderField";
-            stages(2).freeParams = ["cx0", "cx1", "cy0", "cy1"];  % Order 2
-            stages(2).useChebyshev = true;
-            stages(2).chebyshevOrder = 2;
-            stages(2).sigmaClipping = false;
-            stages(2).description = "Low-order field corrections";
-            
-            stages(3).name = "HighOrderField";
-            stages(3).freeParams = ["cx0", "cx1", "cx2", "cx3", "cx4", "cy0", "cy1", "cy2", "cy3", "cy4"];  % Order 4
-            stages(3).useChebyshev = true;
-            stages(3).chebyshevOrder = 4;
-            stages(3).sigmaClipping = true;
-            stages(3).sigmaThreshold = 2.5;
-            stages(3).sigmaIterations = 2;
-            stages(3).description = "High-order field corrections";
+               % Stage 2: Python-compliant field corrections 
+            % kx0 varies, ky0=0 fixed, order 4 for X,Y, order 1 for XY
+            stages(2).name = "FieldCorrection_Python";
+            stages(2).freeParams = ["kx0", "kx", "ky", "kx2", "ky2", "kx3", "ky3", "kx4", "ky4", "kxy"];
+            stages(2).fixedParams = struct('ky0', 0);  % ky0 = 0 and fixed
+            stages(2).usePythonFieldModel = true;  % Use Python field correction model
+            stages(2).sigmaClipping = true;
+            stages(2).sigmaThreshold = 2.0;  % Tighter threshold
+            stages(2).sigmaIterations = 3;
+            stages(2).description = "Python-compliant Chebyshev field corrections";
         end
-        
+
         function validateSequence(stages)
             % Validate that a sequence structure is properly formatted
             

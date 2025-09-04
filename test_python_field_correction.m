@@ -36,7 +36,7 @@ try
     
     % 3. Test calculateAbsolutePhotometry with Python field correction
     fprintf('\n3. Testing calculateAbsolutePhotometry with Python field correction...\n');
-    CatalogAB = transmission.photometry.calculateAbsolutePhotometry(OptimizedParams, Config, ...
+    CatalogAB = transmission.calculateAbsolutePhotometry(OptimizedParams, Config, ...
         'Verbose', false);  % Reduce verbosity for testing
     
     % 4. Check results

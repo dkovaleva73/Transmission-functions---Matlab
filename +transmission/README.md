@@ -82,6 +82,45 @@ Step-by-step functions for custom calibrator processing workflows.
 totalFlux = transmission.calibrators.calculateTotalFluxCalibrators(Wavelength, SpecTrans, Metadata);
 ```
 
+### `transmission.TransmissionOptimizer` - Multi-Stage Optimization
+Comprehensive optimization system for calibrating transmission parameters using field calibrators.
+
+```matlab
+% Run full optimization sequence
+Config = transmission.inputConfig();
+optimizer = transmission.TransmissionOptimizer(Config);
+finalParams = optimizer.runFullSequence();
+
+% Use optimized parameters for photometry
+CatalogAB = transmission.calculateAbsolutePhotometry(finalParams, Config);
+
+% Get calibrator results with DiffMag
+CalibratorTable = optimizer.getCalibratorResults();
+```
+
+### `transmission.minimizerFminGeneric` - Parameter Optimization Engine
+Generic optimization engine supporting free/fixed parameters, sigma clipping, and field corrections.
+
+```matlab
+% Direct optimization call (usually called via TransmissionOptimizer)
+Config = transmission.inputConfig();
+[OptimalParams, Fval, ExitFlag, Output, ResultData] = ...
+    transmission.minimizerFminGeneric(Config, ...
+        'FreeParams', ["Norm_", "Center"], ...
+        'SigmaClipping', true);
+```
+
+### `transmission.calculateAbsolutePhotometry` - AB Magnitude Calculation
+Calculate absolute photometry using optimized transmission parameters.
+
+```matlab
+% Calculate AB magnitudes for all stars
+Config = transmission.inputConfig();
+optimizer = transmission.TransmissionOptimizer(Config);
+finalParams = optimizer.runFullSequence();
+CatalogAB = transmission.calculateAbsolutePhotometry(finalParams, Config);
+```
+
 ## Package Structure
 
 ```
@@ -89,8 +128,12 @@ totalFlux = transmission.calibrators.calculateTotalFluxCalibrators(Wavelength, S
 ├── totalTransmission.m              % Core total transmission
 ├── calibratorWorkflow.m             % Complete calibrator processing pipeline
 ├── inputConfig.m                    % Configuration management
+├── minimizerFminGeneric.m          % Generic parameter optimization engine
+├── TransmissionOptimizer.m         % Multi-stage optimization controller
+├── calculateAbsolutePhotometry.m   % Calculate AB magnitudes from optimized params
 ├── +instrumental/                   % Instrumental components
 │   ├── otaTransmission.m           % Complete OTA transmission
+│   ├── calculateInstrumentalResponse.m % Instrumental response calculation
 │   ├── quantumEfficiency.m         % CCD quantum efficiency
 │   ├── mirrorReflectance.m          % Mirror reflectivity
 │   ├── correctorTransmission.m     % Corrector transmission
@@ -107,6 +150,7 @@ totalFlux = transmission.calibrators.calculateTotalFluxCalibrators(Wavelength, S
 │   └── calculateTotalFluxCalibrators.m    % Calculate total flux in photons
 ├── +data/                          % Data handling and catalog processing
 │   ├── findCalibratorsWithCoords.m % Find Gaia calibrators around LAST sources
+│   ├── findCalibratorsForAstroImage.m % Find calibrators for AstroImage fields
 │   └── loadAbsorptionData.m        % Load molecular absorption data
 ├── +utils/                         % Utility functions
 │   ├── makeWavelengthArray.m       % Wavelength array generation
@@ -114,23 +158,11 @@ totalFlux = transmission.calibrators.calculateTotalFluxCalibrators(Wavelength, S
 │   ├── legendreModel.m             % Legendre polynomial model
 │   ├── chebyshevModel.m            % Chebyshev polynomial model
 │   ├── rescaleInputData.m          % Data rescaling utilities
-│   └── airmassFromSMARTS.m         % Airmass calculation from SMARTS
+│   ├── airmassFromSMARTS.m         % Airmass calculation from SMARTS
+│   └── sigmaClip.m                 % Sigma clipping for outlier removal
 └── examples/
     └── totalTransmissionDemo.m      % Complete demonstration
 ```
-VO.search
-improc.match
-profview - profiler time of work
-dnd
-fmeansearch
-
-handles, parameters
-set, free - input for minimizator
-xy minimization - lineary 
-linearization for other 3? 
-
-simplex method
-convex
 
 
 ## Key Features
@@ -153,16 +185,25 @@ convex
 - Corrector transmission (from StarBrightXLT data)
 - Field-dependent corrections
 
+### ✅ Advanced Optimization System
+- Multi-stage optimization workflow based on Python fitutils module
+- Support for free and fixed parameter optimization
+- Sigma clipping for outlier rejection
+- Python-compliant and simple field correction models
+- Automatic calibrator matching with Gaia DR3
+
 ### ✅ Flexible Configuration System
 - Predefined scenarios: `default`, `photometric_night`, `humid_conditions`, `high_altitude`, etc.
 - Centralized parameter management
 - Easy customization
+- Optimization bounds management
 
 ### ✅ Calibrator Processing Pipeline
 - Cross-matching LAST catalog sources with Gaia DR3 spectra
 - Automatic magnitude filtering and duplicate removal
 - Transmission application to Gaia spectra (336-1020 nm → 300-1100 nm)
 - Total flux calculation in photons following Garrappa et al. 2025 methodology
+- AB magnitude calculation with field-dependent corrections
 
 ## Configuration Scenarios
 

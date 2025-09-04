@@ -30,7 +30,7 @@ try
     
     % Use default config, but OptimizedParams should trigger Python mode
     Config = transmission.inputConfig();
-    CatalogAB = transmission.photometry.calculateAbsolutePhotometry(OptimizedParams, Config, 'Verbose', false);
+    CatalogAB = transmission.calculateAbsolutePhotometry(OptimizedParams, Config, 'Verbose', false);
     
     % Check field correction variation
     fc_range = max(CatalogAB.FIELD_CORRECTION_MAG) - min(CatalogAB.FIELD_CORRECTION_MAG);
@@ -51,7 +51,7 @@ try
     OptimizedParams5 = struct();
     OptimizedParams5.Norm_ = 0.8;
     
-    CatalogAB5 = transmission.photometry.calculateAbsolutePhotometry(OptimizedParams5, Config5, 'Verbose', false);
+    CatalogAB5 = transmission.calculateAbsolutePhotometry(OptimizedParams5, Config5, 'Verbose', false);
     
     fc_range5 = max(CatalogAB5.FIELD_CORRECTION_MAG) - min(CatalogAB5.FIELD_CORRECTION_MAG);
     if fc_range5 > 0.01
@@ -69,7 +69,7 @@ try
     TestParams.cy0 = 0.3;
     
     % This is an internal function, so we'll test indirectly
-    CatalogTest = transmission.photometry.calculateAbsolutePhotometry(TestParams, Config, 'Verbose', false);
+    CatalogTest = transmission.calculateAbsolutePhotometry(TestParams, Config, 'Verbose', false);
     fprintf('✓ Parameter mapping tested (processed %d stars)\n', height(CatalogTest));
     
     fprintf('\n=== CONFIG FIELD CORRECTION TEST COMPLETE ===\n');

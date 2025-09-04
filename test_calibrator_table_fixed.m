@@ -73,7 +73,7 @@ try
     fprintf('   optimizer = transmission.TransmissionOptimizer(Config);\n');
     fprintf('   finalParams = optimizer.runFullSequence();\n');
     fprintf('   CalibratorTable = optimizer.getCalibratorResults();  %% Get calibrator DiffMag\n');
-    fprintf('   CatalogAB = transmission.photometry.calculateAbsolutePhotometry(finalParams, Config);  %% Get all stars\n');
+    fprintf('   CatalogAB = transmission.calculateAbsolutePhotometry(finalParams, Config);  %% Get all stars\n');
     
 catch ME
     fprintf('✗ Error: %s\n', ME.message);

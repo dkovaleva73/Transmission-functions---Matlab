@@ -1,9 +1,8 @@
 function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerFminGeneric(Config, Args)
     % Generic minimizer using fminsearch (simplex method) with configurable parameters
     % This is a generative version that can optimize any subset of transmission parameters
-    % 
-    % Input:  - Config - Configuration structure from transmission.inputConfig()
-    %         - Args - Optional arguments:
+    %    Input:  - Config - Configuration structure from transmission.inputConfig()
+    %            - Args - Optional arguments:
     %           'FreeParams' - Cell array of parameter names to optimize
     %           'FixedParams' - Structure with fixed parameter values (overrides Config)
     %           'InitialValues' - Structure with initial values for free parameters
@@ -17,13 +16,11 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerFminGene
     %           'Verbose' - Enable verbose output (default: false)
     %           'PlotResults' - Plot optimization progress (default: false)
     %           'SaveResults' - Save optimization results (default: false)
-    %
     % Output: - OptimalParams - Structure with optimal parameter values
     %         - Fval - Final value of cost function
     %         - ExitFlag - Exit condition from fminsearch
     %         - Output - Optimization details from fminsearch
     %         - ResultData - Structure with calibrator data and residuals
-    %
     % Author: D. Kovaleva (Aug 2025)
     % Example:
     %   Config = transmission.inputConfig();
@@ -122,13 +119,8 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerFminGene
     end
     
     % Preload absorption data for efficiency
-    if Verbose
-        fprintf('Preloading absorption data...\n');
-    end
-    AllSpecies = {'H2O', 'O3UV', 'O2', 'CH4', 'CO', 'N2O', 'CO2', 'N2', 'O4', ...
-                  'NH3', 'NO', 'NO2', 'SO2U', 'SO2I', 'HNO3', 'NO3', 'HNO2', ...
-                  'CH2O', 'BrO', 'ClNO'};
-    AbsorptionData = transmission.data.loadAbsorptionData([], AllSpecies, false);
+    % Get absorption data from Config (already cached in memory)
+    AbsorptionData = Config.AbsorptionData;
     
     % Setup field correction model
     if Args.UsePythonFieldModel
@@ -344,12 +336,13 @@ function ParamMapping = prepareParameterMapping(Config, FreeParams, FixedParams,
         [configPath, defaultValue] = getParameterPath(paramName, Config);
         ParamMapping.ConfigPaths{i} = configPath;
         
-        % Set initial value
+        % Set initial value with priority: InitialValues > FixedParams > defaultValue from Config
         if isfield(InitialValues, paramName)
             ParamMapping.InitialVector(i) = InitialValues.(paramName);
         elseif isfield(FixedParams, paramName)
             ParamMapping.InitialVector(i) = FixedParams.(paramName);
         else
+            % Use default value from Config structure for free parameters
             ParamMapping.InitialVector(i) = defaultValue;
         end
     end
@@ -445,37 +438,37 @@ function [configPath, defaultValue] = getParameterPath(paramName, Config)
             defaultValue = 0;
         % Python field model parameters (advanced Chebyshev)
         case 'kx0'
-            configPath = 'FieldCorrection.Python.kx0';
+            configPath = 'FieldCorrection.kx0';
             defaultValue = 0;
         case 'ky0'
-            configPath = 'FieldCorrection.Python.ky0';
+            configPath = 'FieldCorrection.ky0';
             defaultValue = 0;
         case 'kx'
-            configPath = 'FieldCorrection.Python.kx';
+            configPath = 'FieldCorrection.kx';
             defaultValue = 0;
         case 'ky'
-            configPath = 'FieldCorrection.Python.ky';
+            configPath = 'FieldCorrection.ky';
             defaultValue = 0;
         case 'kx2'
-            configPath = 'FieldCorrection.Python.kx2';
+            configPath = 'FieldCorrection.kx2';
             defaultValue = 0;
         case 'ky2'
-            configPath = 'FieldCorrection.Python.ky2';
+            configPath = 'FieldCorrection.ky2';
             defaultValue = 0;
         case 'kx3'
-            configPath = 'FieldCorrection.Python.kx3';
+            configPath = 'FieldCorrection.kx3';
             defaultValue = 0;
         case 'ky3'
-            configPath = 'FieldCorrection.Python.ky3';
+            configPath = 'FieldCorrection.ky3';
             defaultValue = 0;
         case 'kx4'
-            configPath = 'FieldCorrection.Python.kx4';
+            configPath = 'FieldCorrection.kx4';
             defaultValue = 0;
         case 'ky4'
-            configPath = 'FieldCorrection.Python.ky4';
+            configPath = 'FieldCorrection.ky4';
             defaultValue = 0;
         case 'kxy'
-            configPath = 'FieldCorrection.Python.kxy';
+            configPath = 'FieldCorrection.kxy';
             defaultValue = 0;
         otherwise
             error('Unknown parameter: %s', paramName);
@@ -538,8 +531,9 @@ function CalibData = loadCalibratorData(Config)
     CalibData.Metadata = Metadata;
 end
 
-function [Cost, Residuals, DiffMag] = calculateCostFunction(CalibData, Config, AbsorptionData, ChebyshevModel, UsePythonModel)
+function [Cost, Residuals, DiffMag] = calculateCostFunction(CalibData, ConfigLocal, AbsorptionData, ChebyshevModel, UsePythonModel)
     % Calculate cost function for current parameters
+    % ConfigLocal contains the updated parameters for this iteration
     
     if nargin < 5
         UsePythonModel = false;
@@ -547,7 +541,7 @@ function [Cost, Residuals, DiffMag] = calculateCostFunction(CalibData, Config, A
     
     % Apply transmission to calibrators
     [SpecTrans, Wavelength, ~] = transmission.calibrators.applyTransmissionToCalibrators(...
-        CalibData.Spec, CalibData.Metadata, Config, 'AbsorptionData', AbsorptionData);
+        CalibData.Spec, CalibData.Metadata, ConfigLocal, 'AbsorptionData', AbsorptionData);
     
     % Convert to flux array
     if iscell(SpecTrans)
@@ -559,21 +553,25 @@ function [Cost, Residuals, DiffMag] = calculateCostFunction(CalibData, Config, A
     % Calculate total flux - use correct named parameter syntax  
     TotalFlux = transmission.calibrators.calculateTotalFluxCalibrators(...
         Wavelength, TransmittedFluxArray, CalibData.Metadata, ...
-        'Norm_', Config.General.Norm_);
+        'Norm_', ConfigLocal.General.Norm_);
     
     % Apply field corrections if provided
     if UsePythonModel
-        % Apply Python field correction model
-        FieldCorrection = evaluatePythonFieldModel(CalibData.LASTData, Config);
-        TotalFlux = TotalFlux .* FieldCorrection;
-    elseif ~isempty(ChebyshevModel)
+        % Apply Python field correction model using fieldCorrection
+        FieldCorrectionMag = transmission.instrumental.fieldCorrection(...
+            CalibData.LASTData.X, CalibData.LASTData.Y, ConfigLocal);
+        % Convert magnitude correction to multiplicative flux factor
+      %  FieldCorrection = 10.^(-0.4 * FieldCorrectionMag);
+      %  TotalFlux = TotalFlux .* FieldCorrection;
+      
+   % elseif ~isempty(ChebyshevModel)
         % Apply simple Chebyshev model
-        FieldCorrection = evaluateChebyshev(ChebyshevModel, CalibData.LASTData, Config);
-        TotalFlux = TotalFlux .* FieldCorrection;
+   %     FieldCorrection = evaluateChebyshev(ChebyshevModel, CalibData.LASTData, ConfigLocal);
+   %     TotalFlux = TotalFlux .* FieldCorrection;
     end
     
     % Calculate magnitude differences
-    DiffMag = 2.5 * log10(TotalFlux ./ CalibData.LASTData.FLUX_APER_3);
+    DiffMag = 2.5 * log10(TotalFlux ./ CalibData.LASTData.FLUX_APER_3) + FieldCorrectionMag;
     
     % Calculate residuals and cost
     Residuals = DiffMag;
@@ -770,110 +768,3 @@ function xTransformed = transformToBounded(x, ParamMapping)
     end
 end
 
-function FieldCorrection = evaluatePythonFieldModel(LASTData, Config)
-    % Evaluate Python field correction model matching fitutils.py
-    % Based on: model += Cheb_x(xcoor_) + Cheb_y(ycoor_) + kx0 + Cheb_xy_x(xcoor_)*Cheb_xy_y(ycoor_)
-    
-    % Get Python field parameters from Config
-    if isfield(Config.FieldCorrection, 'Python')
-        PythonParams = Config.FieldCorrection.Python;
-    else
-        % No Python parameters - return no correction
-        FieldCorrection = ones(height(LASTData), 1);
-        return;
-    end
-    
-    % Extract coordinates
-    X = LASTData.X;
-    Y = LASTData.Y;
-    
-    % Normalize coordinates to [-1, +1] using detector dimensions from Config and rescaleInputData
-    min_coor = Config.Instrumental.Detector.Min_coordinate;
-    max_coor = Config.Instrumental.Detector.Max_coordinate;
-    
-    xcoor_ = transmission.utils.rescaleInputData(X, min_coor, max_coor, [], [], Config);
-    ycoor_ = transmission.utils.rescaleInputData(Y, min_coor, max_coor, [], [], Config);
-    
-    % Prepare Config for X Chebyshev (order 4: [0, kx, kx2, kx3, kx4])
-    ConfigX = Config;
-    ConfigX.Utils.ChebyshevModel.Default_coeffs = [0, ...
-        getFieldValue(PythonParams, 'kx', 0), ...
-        getFieldValue(PythonParams, 'kx2', 0), ...
-        getFieldValue(PythonParams, 'kx3', 0), ...
-        getFieldValue(PythonParams, 'kx4', 0)];
-    ConfigX.Utils.ChebyshevModel.Default_mode = 'zp';  % No exponential, just polynomial
-    ConfigX.Utils.RescaleInputData.Target_min = -1;
-    ConfigX.Utils.RescaleInputData.Target_max = 1;
-    
-    % Calculate Chebyshev for X (we'll extract the polynomial value)
-    Cheb_x_vals = evaluateChebyshevDirect(xcoor_, ConfigX.Utils.ChebyshevModel.Default_coeffs);
-    
-    % Prepare Config for Y Chebyshev (order 4: [0, ky, ky2, ky3, ky4])
-    ConfigY = Config;
-    ConfigY.Utils.ChebyshevModel.Default_coeffs = [0, ...
-        getFieldValue(PythonParams, 'ky', 0), ...
-        getFieldValue(PythonParams, 'ky2', 0), ...
-        getFieldValue(PythonParams, 'ky3', 0), ...
-        getFieldValue(PythonParams, 'ky4', 0)];
-    
-    % Calculate Chebyshev for Y
-    Cheb_y_vals = evaluateChebyshevDirect(ycoor_, ConfigY.Utils.ChebyshevModel.Default_coeffs);
-    
-    % XY cross-term: Cheb_xy uses order 1 polynomials [0, kxy]
-    kxy = getFieldValue(PythonParams, 'kxy', 0);
-    Cheb_xy_x_vals = evaluateChebyshevDirect(xcoor_, [0, kxy]);
-    Cheb_xy_y_vals = evaluateChebyshevDirect(ycoor_, [0, kxy]);
-    
-    % Get constant terms
-    kx0 = getFieldValue(PythonParams, 'kx0', 0);
-    ky0 = getFieldValue(PythonParams, 'ky0', 0);  % Should be 0 and fixed in Python
-    
-    % Calculate field correction in magnitude space (additive)
-    % Python: model += Cheb_x(xcoor_) + Cheb_y(ycoor_) + kx0 + Cheb_xy_x(xcoor_)*Cheb_xy_y(ycoor_)
-    field_correction_mag = Cheb_x_vals + Cheb_y_vals + kx0 + ky0 + Cheb_xy_x_vals .* Cheb_xy_y_vals;
-    
-    % Convert from magnitude correction to flux correction
-    % In magnitude space: mag_corrected = mag_original + field_correction_mag
-    % In flux space: flux_corrected = flux_original * 10^(-0.4 * field_correction_mag)
-    FieldCorrection = 10.^(-0.4 * field_correction_mag);
-end
-
-function value = getFieldValue(structure, fieldname, defaultValue)
-    % Safe field extraction with default value
-    if isfield(structure, fieldname)
-        value = structure.(fieldname);
-    else
-        value = defaultValue;
-    end
-end
-
-function result = evaluateChebyshevDirect(x, coeffs)
-    % Direct evaluation of Chebyshev polynomial without exponential
-    % x: input values (already normalized to [-1, 1])
-    % coeffs: Chebyshev coefficients [c0, c1, c2, ...]
-    
-    n = length(coeffs);
-    if n == 0
-        result = zeros(size(x));
-        return;
-    end
-    
-    % Initialize Chebyshev polynomials
-    T = zeros(length(x), n);
-    
-    % T_0(x) = 1
-    T(:, 1) = ones(size(x));
-    
-    % T_1(x) = x
-    if n >= 2
-        T(:, 2) = x;
-    end
-    
-    % T_n(x) = 2*x*T_{n-1}(x) - T_{n-2}(x)
-    for k = 3:n
-        T(:, k) = 2 * x .* T(:, k-1) - T(:, k-2);
-    end
-    
-    % Sum with coefficients
-    result = T * coeffs(:);
-end

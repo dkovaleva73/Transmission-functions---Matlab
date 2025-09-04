@@ -11,7 +11,7 @@ try
     Config = transmission.inputConfig();
     
     % Calculate absolute photometry
-    CatalogAB = transmission.photometry.calculateAbsolutePhotometry(OptimizedParams, Config, 'Verbose', false);
+    CatalogAB = transmission.calculateAbsolutePhotometry(OptimizedParams, Config, 'Verbose', false);
     
     % Check if DIFF_MAG column exists
     if ismember('DIFF_MAG', CatalogAB.Properties.VariableNames)

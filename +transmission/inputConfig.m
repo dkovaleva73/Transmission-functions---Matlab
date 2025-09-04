@@ -7,6 +7,7 @@ function Config = inputConfig(scenario)
     %         'instrumental_only' - Only instrumental transmission
     %         'custom' - Base configuration for user modification
     % Output: Config (struct) - Complete configuration structure
+    %         Config.AbsorptionData - Pre-loaded absorption data (cached in memory)
     % Author: D. Kovaleva (Jul 2025)
     % References: 1. Ofek et al. 2023, PASP 135, Issue 1054, id.124502;
     %             2. Garrappa et al. 2025, A&A 699, A50.
@@ -21,6 +22,9 @@ function Config = inputConfig(scenario)
     arguments
         scenario = 'default'
     end
+    
+    % Load absorption data (cached in memory via persistent variable)
+    AbsorptionData = getCachedAbsorptionData();
     
     % Initialize base configuration
     Config = struct();
@@ -146,7 +150,7 @@ function Config = inputConfig(scenario)
     
     % 4. FIELD CORRECTION SETTINGS (for Python model compatibility)
     Config.FieldCorrection = struct(...
-        'Enable', false, ...              % Enable field corrections
+        'Enable', true, ...              % Enable field corrections
         'Mode', 'none', ...               % 'none', 'simple', or 'python'
         'Python', struct(...              % Python field correction parameters
             'kx0', 0.0, ...               % Constant offset X
@@ -197,6 +201,9 @@ function Config = inputConfig(scenario)
     % 7. OPTIMIZATION BOUNDS (from Python AbsoluteCalibration class)
     Config.Optimization = struct();
     Config.Optimization.Bounds = getDefaultOptimizationBounds();
+    
+    % 8. ABSORPTION DATA (pre-loaded and cached)
+    Config.AbsorptionData = AbsorptionData;
     
     % Apply scenario-specific settings
     switch lower(scenario)
@@ -343,50 +350,50 @@ function bounds = getDefaultOptimizationBounds()
     
     % Lower bounds
     bounds.Lower = struct();
-    bounds.Lower.Norm_ = 0.1;           % Normalization factor  
+    bounds.Lower.Norm_ = 0.0;           % Normalization factor  
     bounds.Lower.Center = 300;          % QE center wavelength (nm) - from Python AbsoluteCalibration
-    bounds.Lower.Amplitude = 0.5;       % QE amplitude
-    bounds.Lower.Sigma = 500;           % QE sigma (nm)
-    bounds.Lower.Gamma = 0.1;           % QE gamma
+    bounds.Lower.Amplitude = 10.0;       % QE amplitude
+    bounds.Lower.Sigma = 0.01;           % QE sigma (nm)
+    bounds.Lower.Gamma = -1;           % QE gamma
     bounds.Lower.Pwv_cm = 0.1;          % Water vapor (cm)
-    bounds.Lower.Tau_aod500 = 0.0;      % Aerosol optical depth
-    bounds.Lower.Alpha = 0.5;           % Aerosol Angstrom exponent
+    bounds.Lower.Tau_aod500 = 0.01;      % Aerosol optical depth
+    bounds.Lower.Alpha = 0.0001;           % Aerosol Angstrom exponent
     bounds.Lower.Dobson_units = 200;    % Ozone (DU)
-    bounds.Lower.Temperature_C = -20;   % Temperature (°C)
-    bounds.Lower.Pressure = 800;        % Pressure (hPa)
+    bounds.Lower.Temperature_C = 10;   % Temperature (°C)
+    bounds.Lower.Pressure = 960;        % Pressure (hPa)
     
     % Chebyshev field correction bounds (simple mode)
     for i = 0:4
-        bounds.Lower.(sprintf('cx%d', i)) = -0.5;
-        bounds.Lower.(sprintf('cy%d', i)) = -0.5;
+        bounds.Lower.(sprintf('cx%d', i)) = -10;
+        bounds.Lower.(sprintf('cy%d', i)) = -10;
     end
     
     % Python field correction bounds
-    bounds.Lower.kx0 = -0.3;            % Constant offset X
-    bounds.Lower.ky0 = -0.3;            % Constant offset Y (typically fixed at 0)
-    bounds.Lower.kx = -0.2;             % Linear term X
-    bounds.Lower.ky = -0.2;             % Linear term Y
-    bounds.Lower.kx2 = -0.1;            % Quadratic term X
-    bounds.Lower.ky2 = -0.1;            % Quadratic term Y
-    bounds.Lower.kx3 = -0.05;           % Cubic term X
-    bounds.Lower.ky3 = -0.05;           % Cubic term Y
-    bounds.Lower.kx4 = -0.02;           % Quartic term X
-    bounds.Lower.ky4 = -0.02;           % Quartic term Y
-    bounds.Lower.kxy = -0.1;            % Cross term XY
+    bounds.Lower.kx0 = -10;            % Constant offset X
+    bounds.Lower.ky0 = -10;            % Constant offset Y (typically fixed at 0)
+    bounds.Lower.kx = -10;             % Linear term X
+    bounds.Lower.ky = -10;             % Linear term Y
+    bounds.Lower.kx2 = -10;            % Quadratic term X
+    bounds.Lower.ky2 = -10;            % Quadratic term Y
+    bounds.Lower.kx3 = -10;           % Cubic term X
+    bounds.Lower.ky3 = -10;           % Cubic term Y
+    bounds.Lower.kx4 = -10;           % Quartic term X
+    bounds.Lower.ky4 = -10;           % Quartic term Y
+    bounds.Lower.kxy = -10;            % Cross term XY
     
     % Upper bounds
     bounds.Upper = struct();
-    bounds.Upper.Norm_ = 2.0;           % Normalization factor
+    bounds.Upper.Norm_ = 1.0;           % Normalization factor
     bounds.Upper.Center = 1000;         % QE center wavelength (nm) - from Python AbsoluteCalibration  
-    bounds.Upper.Amplitude = 2.0;       % QE amplitude
-    bounds.Upper.Sigma = 3000;          % QE sigma (nm)
-    bounds.Upper.Gamma = 2.0;           % QE gamma
-    bounds.Upper.Pwv_cm = 10.0;         % Water vapor (cm)
+    bounds.Upper.Amplitude = 1000;       % QE amplitude
+    bounds.Upper.Sigma = 500;          % QE sigma (nm)
+    bounds.Upper.Gamma = 10;           % QE gamma
+    bounds.Upper.Pwv_cm = 10;         % Water vapor (cm)
     bounds.Upper.Tau_aod500 = 1.0;      % Aerosol optical depth
-    bounds.Upper.Alpha = 3.0;           % Aerosol Angstrom exponent
-    bounds.Upper.Dobson_units = 500;    % Ozone (DU)
-    bounds.Upper.Temperature_C = 50;    % Temperature (°C)
-    bounds.Upper.Pressure = 1100;       % Pressure (hPa)
+    bounds.Upper.Alpha = 5.0;           % Aerosol Angstrom exponent
+    bounds.Upper.Dobson_units = 400;    % Ozone (DU)
+    bounds.Upper.Temperature_C = 35;    % Temperature (°C)
+    bounds.Upper.Pressure = 970;       % Pressure (hPa)
     
     % Chebyshev field correction bounds (simple mode)
     for i = 0:4
@@ -395,15 +402,42 @@ function bounds = getDefaultOptimizationBounds()
     end
     
     % Python field correction bounds
-    bounds.Upper.kx0 = 0.3;             % Constant offset X
-    bounds.Upper.ky0 = 0.3;             % Constant offset Y (typically fixed at 0)
-    bounds.Upper.kx = 0.2;              % Linear term X
-    bounds.Upper.ky = 0.2;              % Linear term Y
-    bounds.Upper.kx2 = 0.1;             % Quadratic term X
-    bounds.Upper.ky2 = 0.1;             % Quadratic term Y
-    bounds.Upper.kx3 = 0.05;            % Cubic term X
-    bounds.Upper.ky3 = 0.05;            % Cubic term Y
-    bounds.Upper.kx4 = 0.02;            % Quartic term X
-    bounds.Upper.ky4 = 0.02;            % Quartic term Y
-    bounds.Upper.kxy = 0.1;             % Cross term XY
+    bounds.Upper.kx0 = 10;             % Constant offset X
+    bounds.Upper.ky0 = 10;             % Constant offset Y (typically fixed at 0)
+    bounds.Upper.kx = 10;              % Linear term X
+    bounds.Upper.ky = 10;              % Linear term Y
+    bounds.Upper.kx2 = 10;             % Quadratic term X
+    bounds.Upper.ky2 = 10;             % Quadratic term Y
+    bounds.Upper.kx3 = 10;            % Cubic term X
+    bounds.Upper.ky3 = 10;            % Cubic term Y
+    bounds.Upper.kx4 = 10;            % Quartic term X
+    bounds.Upper.ky4 = 10;            % Quartic term Y
+    bounds.Upper.kxy = 10;             % Cross term XY
+end
+
+function AbsorptionData = getCachedAbsorptionData()
+    % Get cached absorption data using persistent variable
+    % This function loads absorption data once and keeps it in memory
+    % for all subsequent calls, significantly improving performance
+    
+    persistent cachedData
+    persistent loadTime
+    
+    % Check if data needs to be loaded
+    if isempty(cachedData)
+        % Load all molecular species for comprehensive atmospheric modeling
+        AllSpecies = {'H2O', 'O3UV', 'O2', 'CH4', 'CO', 'N2O', 'CO2', 'N2', 'O4', ...
+                      'NH3', 'NO', 'NO2', 'SO2U', 'SO2I', 'HNO3', 'NO3', 'HNO2', ...
+                      'CH2O', 'BrO', 'ClNO'};
+        
+        % Load data silently (verbose=false)
+        cachedData = transmission.data.loadAbsorptionData([], AllSpecies, false);
+        loadTime = datetime('now');
+        
+        % Display loading message (only once)
+        fprintf('Absorption data loaded and cached in memory at %s\n', ...
+                datestr(loadTime, 'yyyy-mm-dd HH:MM:SS'));
+    end
+    
+    AbsorptionData = cachedData;
 end

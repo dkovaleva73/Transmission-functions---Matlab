@@ -14,7 +14,7 @@ try
     OptimizedParams = struct();
     OptimizedParams.Norm_ = 0.8;
     
-    CatalogAB = transmission.photometry.calculateAbsolutePhotometry(OptimizedParams, Config, 'Verbose', false);
+    CatalogAB = transmission.calculateAbsolutePhotometry(OptimizedParams, Config, 'Verbose', false);
     
     % With just kx0, all stars should have the same field correction
     fc_mean = mean(CatalogAB.FIELD_CORRECTION_MAG);
@@ -39,7 +39,7 @@ try
     OptimizedParams2 = struct();
     OptimizedParams2.Norm_ = 0.8;
     
-    CatalogAB2 = transmission.photometry.calculateAbsolutePhotometry(OptimizedParams2, Config2, 'Verbose', false);
+    CatalogAB2 = transmission.calculateAbsolutePhotometry(OptimizedParams2, Config2, 'Verbose', false);
     
     fc_range2 = max(CatalogAB2.FIELD_CORRECTION_MAG) - min(CatalogAB2.FIELD_CORRECTION_MAG);
     fprintf('Field correction range with kx=0.05: %.4f mag\n', fc_range2);

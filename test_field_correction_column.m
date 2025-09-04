@@ -16,7 +16,7 @@ try
     Config = transmission.inputConfig();
     
     % Test calculateAbsolutePhotometry 
-    CatalogAB = transmission.photometry.calculateAbsolutePhotometry(OptimizedParams, Config, 'Verbose', false);
+    CatalogAB = transmission.calculateAbsolutePhotometry(OptimizedParams, Config, 'Verbose', false);
     
     % Check that FIELD_CORRECTION_MAG column exists
     if ismember('FIELD_CORRECTION_MAG', CatalogAB.Properties.VariableNames)
