@@ -16,7 +16,7 @@ function totalFlux = calculateTotalFluxCalibrators(Wavelength, TransmittedFlux, 
     
     arguments
         Wavelength double = transmission.utils.makeWavelengthArray(transmission.inputConfig())  % nm 
-        TransmittedFlux double = []                   % Transmitted flux spectrum (flux * transmission already applied) - double array [Nspec x Nwavelength]
+        TransmittedFlux double = []                   % Transmitted flux spectrum from applyTransmissionToCalibrators - double array [Nspec x Nwavelength]
         Metadata = []                                 % Metadata structure from findCalibratorsWithCoords
         Args.dt = 20                                  % Time interval (seconds)
         Args.Ageom double = []                        % Geometric area (m²) - uses Config.Instrumental.Telescope.Aperture_area_m2 if empty

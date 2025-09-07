@@ -152,8 +152,26 @@ classdef TransmissionOptimizer < handle
                 Args.FreeParams = stage.freeParams;
             end
             
-            % Use previously optimized parameters as fixed
-            Args.FixedParams = obj.OptimizedParams;
+            % Use previously optimized parameters as fixed, except for Norm_ which can be re-optimized
+            Args.FixedParams = struct();
+            optimizedFields = fieldnames(obj.OptimizedParams);
+            for i = 1:length(optimizedFields)
+                paramName = optimizedFields{i};
+                % Special case: Norm_ can be re-optimized in multiple stages
+                if strcmp(paramName, 'Norm_') && ismember("Norm_", string(stage.freeParams))
+                    % Don't fix Norm_ if it's being optimized in this stage
+                    continue;
+                else
+                    % Fix all other previously optimized parameters
+                    Args.FixedParams.(paramName) = obj.OptimizedParams.(paramName);
+                end
+            end
+            
+            % Use previously optimized Norm_ as initial value if it's being re-optimized
+            Args.InitialValues = struct();
+            if ismember("Norm_", string(stage.freeParams)) && isfield(obj.OptimizedParams, 'Norm_')
+                Args.InitialValues.Norm_ = obj.OptimizedParams.Norm_;
+            end
             
             
             % Handle sigma clipping
@@ -198,6 +216,9 @@ classdef TransmissionOptimizer < handle
             end
             if isfield(Args, 'FixedParams')
                 argCell = [argCell, {'FixedParams', Args.FixedParams}];
+            end
+            if isfield(Args, 'InitialValues')
+                argCell = [argCell, {'InitialValues', Args.InitialValues}];
             end
             if isfield(Args, 'SigmaClipping')
                 argCell = [argCell, {'SigmaClipping', Args.SigmaClipping}];

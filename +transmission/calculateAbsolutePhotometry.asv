@@ -172,8 +172,8 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
     % Create flat Fnu spectrum for zero-point calculation
     Fnu = constant.Fnu('SI');  % AB system flux density
     Wavelength = transmission.utils.makeWavelengthArray(ConfigOptimized);
-    FlatSpectrum = Fnu * ones(size(Wavelength));  % Flat spectrum in SI units
- %   FlatSpectrum = Fnu ./ Wavelength(:).^2;  % Flat spectrum in SI units
+%    FlatSpectrum = Fnu * ones(size(Wavelength));  % Flat spectrum in SI units
+    FlatSpectrum = Fnu ./ Wavelength(:).^2;  % Flat spectrum in SI units
     % Calculate transmission function
     TransFunc = transmission.totalTransmission(Wavelength, ConfigOptimized, 'AbsorptionData', AbsorptionData);
      
@@ -183,7 +183,7 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
     % Calculate total flux for zero-point directly
     % For zero-point: B = H, Dt = 1
     
-    Integrand = SpecTrans_ZP(:) ./ Wavelength(:);
+    Integrand = SpecTrans_ZP(:) .* Wavelength(:);
    
     % Integrate using trapezoidal rule
     A = trapz(Wavelength(:), Integrand);
