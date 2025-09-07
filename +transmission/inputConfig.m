@@ -154,17 +154,17 @@ function Config = inputConfig(scenario)
         'Enable', true, ...              % Enable field corrections
         'Mode', 'none', ...               % 'none', 'simple', or 'python'
         'Python', struct(...              % Python field correction parameters
-            'kx0', 0.3 * randn(1, 1), ...               % Constant offset X
-            'ky0', 0.3 * randn(1, 1), ...               % Constant offset Y (usually fixed at 0)
-            'kx', 0.3 * randn(1, 1), ...                % Linear term X
-            'ky', 0.3 * randn(1, 1), ...                % Linear term Y
-            'kx2', 0.3 * randn(1, 1), ...               % Quadratic term X
-            'ky2', 0.3 * randn(1, 1), ...               % Quadratic term Y
-            'kx3', 0.3 * randn(1, 1), ...               % Cubic term X
-            'ky3', 0.3 * randn(1, 1), ...               % Cubic term Y
-            'kx4', 0.3 * randn(1, 1), ...               % Quartic term X
-            'ky4', 0.3 * randn(1, 1), ...               % Quartic term Y
-            'kxy', 0.3 * randn(1, 1) ...                % Cross term XY
+            'kx0', 0.0,... %0.3 * randn(1, 1), ...               % Constant offset X
+            'ky0', 0.0,... %0.3 * randn(1, 1), ...               % Constant offset Y (usually fixed at 0)
+            'kx', 0.0,... %0.3 * randn(1, 1), ...                % Linear term X
+            'ky', 0.0,... %0.3 * randn(1, 1), ...                % Linear term Y
+            'kx2', 0.0,... %0.3 * randn(1, 1), ...               % Quadratic term X
+            'ky2', 0.0,... %0.3 * randn(1, 1), ...               % Quadratic term Y
+            'kx3', 0.0,... %0.3 * randn(1, 1), ...               % Cubic term X
+            'ky3', 0.0,... %0.3 * randn(1, 1), ...               % Cubic term Y
+            'kx4', 0.0,... %0.3 * randn(1, 1), ...               % Quartic term X
+            'ky4', 0.0,... %0.3 * randn(1, 1), ...               % Quartic term Y
+            'kxy', 0.0... %0.3 * randn(1, 1) ...                % Cross term XY
         ), ...
         'Simple', struct(...              % Simple Chebyshev field correction
             'cx0', 0.0, ...               % X order 0
@@ -370,7 +370,7 @@ function bounds = getDefaultOptimizationBounds()
     end
     
     % Python field correction bounds
-    bounds.Lower.kx0 = -10;            % Constant offset X
+    bounds.Lower.kx0 = -0.01;            % Constant offset X
     bounds.Lower.ky0 = -10;            % Constant offset Y (typically fixed at 0)
     bounds.Lower.kx = -10;             % Linear term X
     bounds.Lower.ky = -10;             % Linear term Y
@@ -403,7 +403,7 @@ function bounds = getDefaultOptimizationBounds()
     end
     
     % Python field correction bounds
-    bounds.Upper.kx0 = 10;             % Constant offset X
+    bounds.Upper.kx0 = 0.01;             % Constant offset X
     bounds.Upper.ky0 = 10;             % Constant offset Y (typically fixed at 0)
     bounds.Upper.kx = 10;              % Linear term X
     bounds.Upper.ky = 10;              % Linear term Y
