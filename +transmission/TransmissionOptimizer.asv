@@ -2,13 +2,12 @@ classdef TransmissionOptimizer < handle
     % Description:  Controller class for sequential transmission optimization
     %               This class manages the optimization sequence, stores results between stages,
     %               and coordinates the overall calibration process following the Garappa et al. (2025) pattern
-    % Author: D. Kovaleva (Sep 2025)
+    % Author:    D. Kovaleva (Sep 2025)
     % Reference: Garrappa et al. 2025, A&A 699, A50
     % Example:  Config = transmission.inputConfig();
     %           optimizer = transmission.TransmissionOptimizer(Config);
     %           finalParams = optimizer.runFullSequence();
-    %            calibrators = optimizer.getCalibratorResults; % input and optimized
-    %                                                 % fluxes for calibrators
+    %           calibrators = optimizer.getCalibratorResults; % optimized fluxes for calibrators                                             % fluxes for calibrators
     
     properties
         Config              % Transmission configuration
@@ -28,9 +27,7 @@ classdef TransmissionOptimizer < handle
             
             arguments
                 Config = transmission.inputConfig()
-                Args.Sequence string = "DefaultSequence"
-            %    Args.Sequence string = "AtmosphericOnly"
-            %    Args.Sequence string = "FieldCorrectionOnly"
+                Args.Sequence string = "Standard"  % Empty means use Config default
                 Args.SigmaClippingEnabled logical = true
                 Args.Verbose logical = true
                 Args.SaveIntermediateResults logical = false
@@ -43,23 +40,25 @@ classdef TransmissionOptimizer < handle
             obj.CurrentStage = 0;
             obj.Results = {};
             
-            % Select optimization sequence
-            switch Args.Sequence
-                case "DefaultSequence"
-                    obj.ActiveSequence = transmission.TransmissionOptimizer.defineDefaultSequence();
-                case "AtmosphericOnly"
-                    obj.ActiveSequence = transmission.TransmissionOptimizer.defineAtmosphericSequence();
-                case "FieldCorrectionOnly"
-                    obj.ActiveSequence = transmission.TransmissionOptimizer.defineFieldCorrectionSequence();
-                case "Custom"
-                    obj.ActiveSequence = [];  % To be set using setCustomSequence
-                otherwise
-                    error('Unknown sequence: %s', Args.Sequence);
+            % Select optimization sequence from Config
+            if Args.Sequence == ""
+                % Use default sequence from Config
+                sequenceName = obj.Config.Optimization.DefaultSequence;
+            else
+                sequenceName = Args.Sequence;
+            end
+            
+            % Get sequence from Config
+            if isfield(obj.Config.Optimization.Sequences, sequenceName)
+                obj.ActiveSequence = obj.Config.Optimization.Sequences.(sequenceName);
+            else
+                error('Unknown sequence: %s. Available sequences: %s', ...
+                      sequenceName, strjoin(fieldnames(obj.Config.Optimization.Sequences), ', '));
             end
             
             if obj.Verbose
                 fprintf('=== TRANSMISSION OPTIMIZER INITIALIZED ===\n');
-                fprintf('Sequence: %s\n', Args.Sequence);
+                fprintf('Sequence: %s\n', sequenceName);
                 fprintf('Number of stages: %d\n', length(obj.ActiveSequence));
                 fprintf('Sigma clipping: %s\n', string(Args.SigmaClippingEnabled));
                 fprintf('\n');
@@ -69,11 +68,34 @@ classdef TransmissionOptimizer < handle
         function setCustomSequence(obj, customStages)
             % Set a custom optimization sequence
             
-            transmission.TransmissionOptimizer.validateSequence(customStages);
+            obj.validateSequence(customStages);
             obj.ActiveSequence = customStages;
             
             if obj.Verbose
                 fprintf('Custom sequence set with %d stages\n', length(customStages));
+            end
+        end
+        
+        function validateSequence(obj, stages)
+            % Validate that a sequence has required fields
+            requiredFields = {'name', 'freeParams', 'method'};
+            
+            if ~isstruct(stages)
+                error('Sequence must be a struct array');
+            end
+            
+            for i = 1:length(stages)
+                stage = stages(i);
+                for j = 1:length(requiredFields)
+                    if ~isfield(stage, requiredFields{j})
+                        error('Stage %d missing required field: %s', i, requiredFields{j});
+                    end
+                end
+                
+                % Validate method
+                if ~ismember(stage.method, {'linear', 'nonlinear'})
+                    error('Stage %d: method must be "linear" or "nonlinear"', i);
+                end
             end
         end
         
@@ -203,44 +225,84 @@ classdef TransmissionOptimizer < handle
             % Set verbosity
             Args.Verbose = obj.Verbose;
             
-            % Run optimization - convert struct to name-value pairs
-            argCell = {};
-            if isfield(Args, 'FreeParams')
-                argCell = [argCell, {'FreeParams', Args.FreeParams}];
+            % Choose solver based on stage method
+            if isfield(stage, 'method') && strcmp(stage.method, 'linear')
+                % Use linear least squares solver
+                if obj.Verbose
+                    fprintf('Using linear least squares solver\n');
+                end
+                
+                % Convert struct to name-value pairs for linear solver
+                argCell = {};
+                if isfield(Args, 'FreeParams')
+                    argCell = [argCell, {'FreeParams', Args.FreeParams}];
+                end
+                if isfield(Args, 'FixedParams')
+                    argCell = [argCell, {'FixedParams', Args.FixedParams}];
+                end
+                if isfield(Args, 'SigmaClipping')
+                    argCell = [argCell, {'SigmaClipping', Args.SigmaClipping}];
+                end
+                if isfield(Args, 'SigmaThreshold')
+                    argCell = [argCell, {'SigmaThreshold', Args.SigmaThreshold}];
+                end
+                if isfield(Args, 'SigmaIterations')
+                    argCell = [argCell, {'SigmaIterations', Args.SigmaIterations}];
+                end
+                if isfield(Args, 'InputData')
+                    argCell = [argCell, {'InputData', Args.InputData}];
+                end
+                if isfield(Args, 'Verbose')
+                    argCell = [argCell, {'Verbose', Args.Verbose}];
+                end
+                
+                [OptimalParams, Fval, ExitFlag, Output, ResultData] = ...
+                    transmission.minimizerLinearLeastSquares(obj.Config, argCell{:});
+            else
+                % Use nonlinear solver (default)
+                if obj.Verbose
+                    fprintf('Using nonlinear solver (fminsearch)\n');
+                end
+                
+                % Convert struct to name-value pairs for nonlinear solver
+                argCell = {};
+                if isfield(Args, 'FreeParams')
+                    argCell = [argCell, {'FreeParams', Args.FreeParams}];
+                end
+                if isfield(Args, 'FixedParams')
+                    argCell = [argCell, {'FixedParams', Args.FixedParams}];
+                end
+                if isfield(Args, 'InitialValues')
+                    argCell = [argCell, {'InitialValues', Args.InitialValues}];
+                end
+                if isfield(Args, 'SigmaClipping')
+                    argCell = [argCell, {'SigmaClipping', Args.SigmaClipping}];
+                end
+                if isfield(Args, 'SigmaThreshold')
+                    argCell = [argCell, {'SigmaThreshold', Args.SigmaThreshold}];
+                end
+                if isfield(Args, 'SigmaIterations')
+                    argCell = [argCell, {'SigmaIterations', Args.SigmaIterations}];
+                end
+                if isfield(Args, 'UseChebyshev')
+                    argCell = [argCell, {'UseChebyshev', Args.UseChebyshev}];
+                end
+                if isfield(Args, 'ChebyshevOrder')
+                    argCell = [argCell, {'ChebyshevOrder', Args.ChebyshevOrder}];
+                end
+                if isfield(Args, 'UsePythonFieldModel')
+                    argCell = [argCell, {'UsePythonFieldModel', Args.UsePythonFieldModel}];
+                end
+                if isfield(Args, 'InputData')
+                    argCell = [argCell, {'InputData', Args.InputData}];
+                end
+                if isfield(Args, 'Verbose')
+                    argCell = [argCell, {'Verbose', Args.Verbose}];
+                end
+                
+                [OptimalParams, Fval, ExitFlag, Output, ResultData] = ...
+                    transmission.minimizerFminGeneric(obj.Config, argCell{:});
             end
-            if isfield(Args, 'FixedParams')
-                argCell = [argCell, {'FixedParams', Args.FixedParams}];
-            end
-            if isfield(Args, 'InitialValues')
-                argCell = [argCell, {'InitialValues', Args.InitialValues}];
-            end
-            if isfield(Args, 'SigmaClipping')
-                argCell = [argCell, {'SigmaClipping', Args.SigmaClipping}];
-            end
-            if isfield(Args, 'SigmaThreshold')
-                argCell = [argCell, {'SigmaThreshold', Args.SigmaThreshold}];
-            end
-            if isfield(Args, 'SigmaIterations')
-                argCell = [argCell, {'SigmaIterations', Args.SigmaIterations}];
-            end
-            if isfield(Args, 'UseChebyshev')
-                argCell = [argCell, {'UseChebyshev', Args.UseChebyshev}];
-            end
-            if isfield(Args, 'ChebyshevOrder')
-                argCell = [argCell, {'ChebyshevOrder', Args.ChebyshevOrder}];
-            end
-            if isfield(Args, 'UsePythonFieldModel')
-                argCell = [argCell, {'UsePythonFieldModel', Args.UsePythonFieldModel}];
-            end
-            if isfield(Args, 'InputData')
-                argCell = [argCell, {'InputData', Args.InputData}];
-            end
-            if isfield(Args, 'Verbose')
-                argCell = [argCell, {'Verbose', Args.Verbose}];
-            end
-            
-            [OptimalParams, Fval, ExitFlag, Output, ResultData] = ...
-                transmission.minimizerFminGeneric(obj.Config, argCell{:});
             disp(Args.FreeParams);
             disp(Args.FixedParams);
             disp(Args.InputData);
@@ -402,180 +464,6 @@ classdef TransmissionOptimizer < handle
                 fprintf('  DiffMag mean: %.4f mag\n', mean(DiffMag));
                 fprintf('  DiffMag std: %.4f mag\n', std(DiffMag));
                 fprintf('  Final optimization cost: %.4e\n', finalStageResult.Fval);
-            end
-        end
-    end
-    
-    methods (Static)
-        function stages = defineDefaultSequence()
-            
-            % Uses Python-like optimization sequence and Chebyshev field correction model
-            
-            % Stage 1: Normalize only with sigma clipping
-            stages(1).name = "NormOnly_Initial";
-            stages(1).freeParams = "Norm_";
-            stages(1).sigmaClipping = true;
-            stages(1).sigmaThreshold = 3.0;
-            stages(1).sigmaIterations = 3;
-            stages(1).usePythonFieldModel = true;  % Use Python-like Chebyshev field correction model
-            stages(1).fixedParams = struct('ky0', 0);  % Keep ky0 fixed at 0
-            stages(1).description = "Initial normalization with outlier removal";
-            
-            % Stage 2: Norm + QE center (no sigma clipping)
-            stages(2).name = "NormAndCenter";
-            stages(2).freeParams = ["Norm_", "Center"];
-            stages(2).sigmaClipping = false;
-            stages(2).usePythonFieldModel = true;  % Use Python-like Chebyshev field correction model
-            stages(2).fixedParams = struct('ky0', 0);  % Keep ky0 fixed at 0
-            stages(2).description = "Optimize normalization and QE center";
-            
-            % Stage 3: Python-compliant field corrections 
-            % kx0 varies, ky0=0 fixed, order 4 for X,Y, order 1 for XY
-            stages(3).name = "FieldCorrection_Python";
-            stages(3).freeParams = ["kx0", "kx", "ky", "kx2", "ky2", "kx3", "ky3", "kx4", "ky4", "kxy"];
-            stages(3).fixedParams = struct('ky0', 0);  % ky0 = 0 and fixed
-            stages(3).usePythonFieldModel = true;  % Use Python-like Chebyshev field correction model
-            stages(3).sigmaClipping = true;
-            stages(3).sigmaThreshold = 2.0;  % Tighter threshold
-            stages(3).sigmaIterations = 3;
-            stages(3).description = "Python-like Chebyshev field corrections";
-            
-            % Stage 4: Norm refinement
-            stages(4).name = "NormRefinement";
-            stages(4).freeParams = "Norm_";
-            stages(4).sigmaClipping = false;
-            stages(4).usePythonFieldModel = true;  % Use Python-like Chebyshev field correction model
-            stages(4).fixedParams = struct('ky0', 0);  % Keep ky0 fixed at 0
-            stages(4).description = "Refine normalization after field corrections";
-            
-            % Stage 5: Atmospheric parameters
-            stages(5).name = "Atmospheric";
-            stages(5).freeParams = ["Pwv_cm", "Tau_aod500"];
-            stages(5).usePythonFieldModel = true;  % Use Python-like Chebyshev field correction model
-            stages(5).sigmaClipping = false;
-            stages(5).fixedParams = struct('ky0', 0);  % Keep ky0 fixed at 0
-            stages(5).description = "Optimize water vapor and aerosol parameters";
-        end
-        
-        function stages = defineSimpleFieldCorrectionSequence()
-            % Define the simple field correction sequence (original behavior)
-            % Uses basic Chebyshev model with order 4
-            
-            % Stage 1: Normalize only with sigma clipping
-            stages(1).name = "NormOnly_Initial";
-            stages(1).freeParams = "Norm_";
-            stages(1).sigmaClipping = true;
-            stages(1).sigmaThreshold = 3.0;
-            stages(1).sigmaIterations = 3;
-            stages(1).description = "Initial normalization with outlier removal";
-            
-            % Stage 2: Norm + QE center
-            stages(2).name = "NormAndCenter";
-            stages(2).freeParams = ["Norm_", "Center"];
-            stages(2).sigmaClipping = false;
-            stages(2).description = "Optimize normalization and QE center";
-            
-            % Stage 3: Simple field corrections using existing Chebyshev
-            stages(3).name = "FieldCorrection_Simple";
-            stages(3).freeParams = ["cx0", "cx1", "cx2", "cx3", "cx4", "cy0", "cy1", "cy2", "cy3", "cy4"];
-            stages(3).useChebyshev = true;
-            stages(3).chebyshevOrder = 4;
-            stages(3).sigmaClipping = true;
-            stages(3).sigmaThreshold = 2.0;
-            stages(3).sigmaIterations = 3;
-            stages(3).description = "Basic Chebyshev field correction coefficients";
-            
-            % Stage 4: Norm refinement
-            stages(4).name = "NormRefinement";
-            stages(4).freeParams = "Norm_";
-            stages(4).sigmaClipping = false;
-            stages(4).description = "Refine normalization after field corrections";
-            
-            % Stage 5: Atmospheric parameters
-            stages(5).name = "Atmospheric";
-            stages(5).freeParams = ["Pwv_cm", "Tau_aod500"];
-            stages(5).sigmaClipping = false;
-            stages(5).description = "Optimize water vapor and aerosol parameters";
-        end
-        
-        function stages = defineAtmosphericSequence()
-            % Sequence focusing on atmospheric parameters
-            
-         % Stage 1: Normalize only with sigma clipping
-            stages(1).name = "NormOnly_Initial";
-            stages(1).freeParams = "Norm_";
-            stages(1).sigmaClipping = true;
-            stages(1).sigmaThreshold = 3.0;
-            stages(1).sigmaIterations = 3;
-            stages(1).description = "Initial normalization with outlier removal";
-            
-            % Stage 2: Norm + QE center (no sigma clipping)
-            stages(2).name = "NormAndCenter";
-            stages(2).freeParams = ["Norm_", "Center"];
-            stages(2).sigmaClipping = false;
-            stages(2).description = "Optimize normalization and QE center";
-            
-            % Stage 3: Atmospheric parameters
-            stages(3).name = "Atmospheric";
-            stages(3).freeParams = ["Pwv_cm", "Tau_aod500"];
-            stages(3).sigmaClipping = false;
-            stages(3).description = "Optimize water vapor and aerosol parameters";
-        end
-        
-        
-        function stages = defineQuickSequence()
-            % Minimal sequence for quick calibration
-            
-            stages(1).name = "QuickNorm";
-            stages(1).freeParams = "Norm_";
-            stages(1).sigmaClipping = true;
-            stages(1).sigmaThreshold = 3.0;
-            stages(1).sigmaIterations = 1;  % Fewer iterations for speed
-            stages(1).description = "Quick normalization";
-            
-            stages(2).name = "QuickAtmospheric";
-            stages(2).freeParams = "Tau_aod500";
-            stages(2).sigmaClipping = false;
-            stages(2).description = "Quick aerosol adjustment";
-        end
-        
-        function stages = defineFieldCorrectionSequence()
-            % Sequence focusing on field-dependent corrections
-            
-            stages(1).name = "NormOnly";
-            stages(1).freeParams = "Norm_";
-            stages(1).sigmaClipping = true;
-            stages(1).sigmaThreshold = 3.0;
-            stages(1).sigmaIterations = 2;
-            stages(1).description = "Initial normalization";
-            
-               % Stage 2: Python-compliant field corrections 
-            % kx0 varies, ky0=0 fixed, order 4 for X,Y, order 1 for XY
-            stages(2).name = "FieldCorrection_Python";
-            stages(2).freeParams = ["kx0", "kx", "ky", "kx2", "ky2", "kx3", "ky3", "kx4", "ky4", "kxy"];
-            stages(2).fixedParams = struct('ky0', 0);  % ky0 = 0 and fixed
-            stages(2).usePythonFieldModel = true;  % Use Python field correction model
-            stages(2).sigmaClipping = true;
-            stages(2).sigmaThreshold = 2.0;  % Tighter threshold
-            stages(2).sigmaIterations = 3;
-            stages(2).description = "Python-like Chebyshev field corrections";
-        end
-
-        function validateSequence(stages)
-            % Validate that a sequence structure is properly formatted
-            
-            if isempty(stages)
-                error('Sequence cannot be empty');
-            end
-            
-            requiredFields = {'name', 'freeParams', 'description'};
-            
-            for i = 1:length(stages)
-                for j = 1:length(requiredFields)
-                    if ~isfield(stages(i), requiredFields{j})
-                        error('Stage %d missing required field: %s', i, requiredFields{j});
-                    end
-                end
             end
         end
     end

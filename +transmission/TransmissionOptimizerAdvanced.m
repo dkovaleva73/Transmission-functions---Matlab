@@ -32,7 +32,7 @@ classdef TransmissionOptimizerAdvanced < handle
             
             arguments
                 Config = transmission.inputConfig()
-                Args.Sequence string = "DefaultSequence"
+                Args.Sequence string = ""  % Empty means use Config default
                 Args.SigmaClippingEnabled logical = true
                 Args.Verbose logical = true
                 Args.SaveIntermediateResults logical = false
@@ -45,43 +45,40 @@ classdef TransmissionOptimizerAdvanced < handle
             obj.CurrentStage = 0;
             obj.Results = {};
             
-            % Initialize optimization sequence
-            switch Args.Sequence
-                case "DefaultSequence"
-                    obj.ActiveSequence = obj.defineAdvancedSequence();
-                case "AtmosphericOnly"
-                    obj.ActiveSequence = obj.defineAtmosphericSequence();
-                case "FieldCorrectionOnly"
-                    obj.ActiveSequence = obj.defineFieldCorrectionSequence();
-                case "Custom"
-                    obj.ActiveSequence = [];  % To be set using setCustomSequence
-                otherwise
-                    error('Unknown sequence: %s', Args.Sequence);
+            % Select optimization sequence from Config
+            if Args.Sequence == ""
+                % Use default sequence from Config
+                sequenceName = obj.Config.Optimization.DefaultSequence;
+            else
+                sequenceName = Args.Sequence;
             end
             
-            % Initialize stage minimizers (default: nonlinear for all stages)
-            numStages = length(obj.ActiveSequence);
-            obj.StageMinimizers = repmat("nonlinear", 1, numStages);
+            % Get sequence from Config
+            if isfield(obj.Config.Optimization.Sequences, sequenceName)
+                obj.ActiveSequence = obj.Config.Optimization.Sequences.(sequenceName);
+            else
+                error('Unknown sequence: %s. Available sequences: %s', ...
+                      sequenceName, strjoin(fieldnames(obj.Config.Optimization.Sequences), ', '));
+            end
             
-            % Set linear minimizer for field correction stages by default
-            if Args.Sequence == "FieldCorrectionOnly" && numStages >= 2
-                % For FieldCorrectionOnly, field corrections are in stage 2
-                obj.StageMinimizers(2) = "linear";
-            elseif numStages >= 3
-                % For other sequences, field corrections are typically in stage 3
-                obj.StageMinimizers(3) = "linear";
+            % Initialize stage minimizers from sequence definitions
+            numStages = length(obj.ActiveSequence);
+            obj.StageMinimizers = string.empty(1, 0);
+            
+            for i = 1:numStages
+                if isfield(obj.ActiveSequence(i), 'method')
+                    obj.StageMinimizers(i) = obj.ActiveSequence(i).method;
+                else
+                    obj.StageMinimizers(i) = "nonlinear";  % Default fallback
+                end
             end
             
             if obj.Verbose
                 fprintf('=== ADVANCED TRANSMISSION OPTIMIZER INITIALIZED ===\n');
-                fprintf('Sequence: %s\n', Args.Sequence);
+                fprintf('Sequence: %s\n', sequenceName);
                 fprintf('Number of stages: %d\n', length(obj.ActiveSequence));
                 fprintf('Sigma clipping: %s\n', string(Args.SigmaClippingEnabled));
-                if Args.Sequence == "FieldCorrectionOnly"
-                    fprintf('Default minimizers: Stage 2 = linear (field corrections), others = nonlinear\n');
-                else
-                    fprintf('Default minimizers: Stage 3 = linear (field corrections), others = nonlinear\n');
-                end
+                fprintf('Stage minimizers: %s\n', strjoin(obj.StageMinimizers, ', '));
                 fprintf('\n');
             end
         end
@@ -437,126 +434,6 @@ classdef TransmissionOptimizerAdvanced < handle
                     fprintf('  Final stage minimizer: %s\n', finalStageResult.MinimizerType);
                 end
             end
-        end
-    end  % End of public methods
-    
-    methods (Static)
-        function stages = defineAdvancedSequence()
-            % Define the advanced optimization sequence with mixed
-            % minimizers (default)
-            % Stage 3 uses linear least squares for field correction parameters
-            % This matches defineDefaultSequence() exactly from TransmissionOptimizer
-            
-            % Stage 1: Normalize only with sigma clipping
-            stages(1).name = "NormOnly_Initial";
-            stages(1).freeParams = "Norm_";
-            stages(1).sigmaClipping = true;
-            stages(1).sigmaThreshold = 3.0;
-            stages(1).sigmaIterations = 3;
-            stages(1).usePythonFieldModel = true;  % Use Python field correction model
-            stages(1).fixedParams = struct('ky0', 0);  % Keep ky0 fixed at 0
-            stages(1).description = "Initial normalization with outlier removal";
-            
-            % Stage 2: Norm + QE center (nonlinear)
-            stages(2).name = "NormAndCenter";
-            stages(2).freeParams = ["Norm_", "Center"];
-            stages(2).sigmaClipping = false;
-            stages(2).usePythonFieldModel = true;
-            stages(2).fixedParams = struct('ky0', 0);
-            stages(2).description = "Optimize normalization and QE center";
-            
-            % Stage 3: Field corrections (LINEAR LEAST SQUARES)
-            stages(3).name = "FieldCorrection_Linear";
-            stages(3).freeParams = ["kx0", "kx", "ky", "kx2", "ky2", "kx3", "ky3", "kx4", "ky4", "kxy"];
-            stages(3).fixedParams = struct('ky0', 0);  % ky0 = 0 and fixed
-            stages(3).usePythonFieldModel = true;
-            stages(3).sigmaClipping = true;
-            stages(3).sigmaThreshold = 2.0;
-            stages(3).sigmaIterations = 3;
-            stages(3).regularization = 1e-6;  % Small regularization for stability
-            stages(3).description = "Linear least squares field correction optimization";
-            
-            % Stage 4: Norm refinement (nonlinear)
-            stages(4).name = "NormRefinement";
-            stages(4).freeParams = "Norm_";
-            stages(4).sigmaClipping = false;
-            stages(4).usePythonFieldModel = true;
-            stages(4).fixedParams = struct('ky0', 0);
-            stages(4).description = "Refine normalization after field corrections";
-            
-            % Stage 5: Atmospheric parameters (nonlinear)
-            stages(5).name = "Atmospheric";
-            stages(5).freeParams = ["Pwv_cm", "Tau_aod500"];
-            stages(5).usePythonFieldModel = true;
-            stages(5).sigmaClipping = false;
-            stages(5).fixedParams = struct('ky0', 0);
-            stages(5).description = "Optimize water vapor and aerosol parameters";
-        end
-        
-        function stages = defineAtmosphericSequence()
-            % Define atmospheric sequence using stages 1, 2, 3, 5 from default sequence
-            
-            % Stage 1: Normalize only with sigma clipping (from default stage 1)
-            stages(1).name = "NormOnly_Initial";
-            stages(1).freeParams = "Norm_";
-            stages(1).sigmaClipping = true;
-            stages(1).sigmaThreshold = 3.0;
-            stages(1).sigmaIterations = 3;
-            stages(1).usePythonFieldModel = true;
-            stages(1).fixedParams = struct('ky0', 0);
-            stages(1).description = "Initial normalization with outlier removal";
-            
-            % Stage 2: Norm + QE center (from default stage 2)
-            stages(2).name = "NormAndCenter";
-            stages(2).freeParams = ["Norm_", "Center"];
-            stages(2).sigmaClipping = false;
-            stages(2).usePythonFieldModel = true;
-            stages(2).fixedParams = struct('ky0', 0);
-            stages(2).description = "Optimize normalization and QE center";
-            
-            % Stage 3: Field corrections (from default stage 3) - LINEAR LEAST SQUARES
-            stages(3).name = "FieldCorrection_Linear";
-            stages(3).freeParams = ["kx0", "kx", "ky", "kx2", "ky2", "kx3", "ky3", "kx4", "ky4", "kxy"];
-            stages(3).fixedParams = struct('ky0', 0);  % ky0 = 0 and fixed
-            stages(3).usePythonFieldModel = true;
-            stages(3).sigmaClipping = true;
-            stages(3).sigmaThreshold = 2.0;
-            stages(3).sigmaIterations = 3;
-            stages(3).regularization = 1e-6;  % Small regularization for stability
-            stages(3).description = "Linear least squares field correction optimization";
-            
-            % Stage 4: Atmospheric parameters (from default stage 5)
-            stages(4).name = "Atmospheric";
-            stages(4).freeParams = ["Pwv_cm", "Tau_aod500"];
-            stages(4).usePythonFieldModel = true;
-            stages(4).sigmaClipping = false;
-            stages(4).fixedParams = struct('ky0', 0);
-            stages(4).description = "Optimize water vapor and aerosol parameters";
-        end
-        
-        function stages = defineFieldCorrectionSequence()
-            % Sequence focusing on field-dependent corrections
-            % Optimized for linear least squares solver
-            
-            % Stage 1: Initial normalization
-            stages(1).name = "NormOnly";
-            stages(1).freeParams = "Norm_";
-            stages(1).sigmaClipping = true;
-            stages(1).sigmaThreshold = 3.0;
-            stages(1).sigmaIterations = 2;
-            stages(1).description = "Initial normalization";
-            
-            % Stage 2: Python-like Chebyshev field corrections (LINEAR SOLVER)
-            % kx0 varies, ky0=0 fixed, order 4 for X,Y, order 1 for XY
-            stages(2).name = "FieldCorrection_Python";
-            stages(2).freeParams = ["kx0", "kx", "ky", "kx2", "ky2", "kx3", "ky3", "kx4", "ky4", "kxy"];
-            stages(2).fixedParams = struct('ky0', 0);  % ky0 = 0 and fixed
-            stages(2).usePythonFieldModel = true;  % Use Python-like Chebyshev field correction model
-            stages(2).sigmaClipping = true;
-            stages(2).sigmaThreshold = 2.0;  % Tighter threshold
-            stages(2).sigmaIterations = 3;
-            stages(2).regularization = 1e-6;  % Small regularization for linear solver stability
-            stages(2).description = "Python-like Chebyshev field corrections";
         end
     end
 end
