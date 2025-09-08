@@ -149,11 +149,11 @@ function Config = inputConfig(scenario)
         ) ...
     );
     
-    % 4. FIELD CORRECTION SETTINGS (for Python model compatibility)
+    % 4. FIELD CORRECTION SETTINGS (for Python-like Chebyshev model compatibility)
     Config.FieldCorrection = struct(...
         'Enable', true, ...              % Enable field corrections
         'Mode', 'none', ...               % 'none', 'simple', or 'python'
-        'Python', struct(...              % Python field correction parameters
+        'Python', struct(...              % Python-like Chebyshev field correction parameters
             'kx0', 0.0,... %0.3 * randn(1, 1), ...               % Constant offset X
             'ky0', 0.0,... %0.3 * randn(1, 1), ...               % Constant offset Y (usually fixed at 0)
             'kx', 0.0,... %0.3 * randn(1, 1), ...                % Linear term X
@@ -166,7 +166,7 @@ function Config = inputConfig(scenario)
             'ky4', 0.0,... %0.3 * randn(1, 1), ...               % Quartic term Y
             'kxy', 0.0... %0.3 * randn(1, 1) ...                % Cross term XY
         ), ...
-        'Simple', struct(...              % Simple Chebyshev field correction
+        'Simple', struct(...              % Basic Chebyshev field correction
             'cx0', 0.0, ...               % X order 0
             'cx1', 0.0, ...               % X order 1
             'cx2', 0.0, ...               % X order 2
@@ -235,7 +235,7 @@ function Config = inputConfig(scenario)
             Config.Atmospheric.Components.Water.Pwv_cm = 3.0;  % 30mm
             
         case 'high_altitude'
-            % High altitude observatory (e.g., Mauna Kea)
+            % High altitude observatory 
             Config.Atmospheric.Pressure_mbar = 610.0;  % ~4.2km altitude
             Config.Atmospheric.Components.Water.Pwv_cm = 0.2;  % Very dry
             Config.Atmospheric.Components.Aerosol.Tau_aod500 = 0.02;  % Excellent conditions
@@ -257,13 +257,13 @@ function Config = inputConfig(scenario)
             Config.Atmospheric.Components.Aerosol.Angstrom_exponent = 0.8;
             
         case 'python_field_correction'
-            % Enable Python field correction model
+            % Enable Python-like Chebyshev field correction model
             Config.FieldCorrection.Enable = true;
             Config.FieldCorrection.Mode = 'python';
             % Parameters will be set by optimizer
             
         case 'simple_field_correction'
-            % Enable simple Chebyshev field correction model
+            % Enable basic Chebyshev field correction model
             Config.FieldCorrection.Enable = true;
             Config.FieldCorrection.Mode = 'simple';
             % Parameters will be set by optimizer
@@ -363,14 +363,14 @@ function bounds = getDefaultOptimizationBounds()
     bounds.Lower.Temperature_C = 10;   % Temperature (°C)
     bounds.Lower.Pressure = 960;        % Pressure (hPa)
     
-    % Chebyshev field correction bounds (simple mode)
+    % Basic Chebyshev field correction bounds
     for i = 0:4
         bounds.Lower.(sprintf('cx%d', i)) = -10;
         bounds.Lower.(sprintf('cy%d', i)) = -10;
     end
     
-    % Python field correction bounds
-    bounds.Lower.kx0 = -0.01;            % Constant offset X
+    % Python-like Chebyshev field correction bounds
+    bounds.Lower.kx0 = -10;            % Constant offset X
     bounds.Lower.ky0 = -10;            % Constant offset Y (typically fixed at 0)
     bounds.Lower.kx = -10;             % Linear term X
     bounds.Lower.ky = -10;             % Linear term Y
@@ -396,14 +396,14 @@ function bounds = getDefaultOptimizationBounds()
     bounds.Upper.Temperature_C = 35;    % Temperature (°C)
     bounds.Upper.Pressure = 970;       % Pressure (hPa)
     
-    % Chebyshev field correction bounds (simple mode)
+    % Basic Chebyshev field correction bounds
     for i = 0:4
         bounds.Upper.(sprintf('cx%d', i)) = 0.5;
         bounds.Upper.(sprintf('cy%d', i)) = 0.5;
     end
     
-    % Python field correction bounds
-    bounds.Upper.kx0 = 0.01;             % Constant offset X
+    % Python-like Chebyshev field correction bounds
+    bounds.Upper.kx0 = 10;             % Constant offset X
     bounds.Upper.ky0 = 10;             % Constant offset Y (typically fixed at 0)
     bounds.Upper.kx = 10;              % Linear term X
     bounds.Upper.ky = 10;              % Linear term Y
@@ -437,7 +437,7 @@ function AbsorptionData = getCachedAbsorptionData()
         
         % Display loading message (only once)
         fprintf('Absorption data loaded and cached in memory at %s\n', ...
-                datestr(loadTime, 'yyyy-mm-dd HH:MM:SS'));
+                string(loadTime));
     end
     
     AbsorptionData = cachedData;

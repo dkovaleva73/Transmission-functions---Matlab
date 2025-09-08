@@ -201,11 +201,11 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
         fprintf('Base zero-point magnitude (no field corrections): %.4f mag\n', ZP_magnitude);
     end
     
-    % Setup Chebyshev model if we have field corrections
+    % Setup basic Chebyshev model if we have field corrections
     hasFieldCorrections = false;
     hasPythonFieldCorrections = false;
     
-    % Check for simple Chebyshev field corrections (cx0, cy0, etc.)
+    % Check for basic Chebyshev field corrections (cx0, cy0, etc.)
     if isfield(OptimizedParams, 'cx0') || isfield(OptimizedParams, 'cy0')
         hasFieldCorrections = true;
         % Extract Chebyshev coefficients
@@ -229,7 +229,7 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
         end
     end
     
-    % Check for Python field corrections (kx0, kx, ky, etc.)
+    % Check for Python-like Chebyshev field corrections (kx0, kx, ky, etc.)
     pythonFieldParams = {'kx0', 'kx', 'ky', 'kx2', 'ky2', 'kx3', 'ky3', 'kx4', 'ky4', 'kxy'};
     for i = 1:length(pythonFieldParams)
         if isfield(OptimizedParams, pythonFieldParams{i})
@@ -240,7 +240,7 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
     end
     
     if hasPythonFieldCorrections && Args.Verbose
-        fprintf('Python field corrections detected from OptimizedParams\n');
+        fprintf('Python-like Chebyshev field corrections detected from OptimizedParams\n');
     end
     
     % Initialize arrays for results
@@ -274,12 +274,12 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
             X_norm = transmission.utils.rescaleInputData(X, min_coord, max_coord, [], [], Config);
             Y_norm = transmission.utils.rescaleInputData(Y, min_coord, max_coord, [], [], Config);
             
-            % Check for Python field correction model
+            % Check for Python-like Chebyshev field correction model
             if hasPythonFieldCorrections || ...
                (isfield(ConfigOptimized, 'FieldCorrection') && ...
                 isfield(ConfigOptimized.FieldCorrection, 'Mode') && ...
                 strcmp(ConfigOptimized.FieldCorrection.Mode, 'python'))
-                % Python field model: Cheb_x(xcoor_) + Cheb_y(ycoor_) + kx0 + Cheb_xy_x(xcoor_)*Cheb_xy_y(ycoor_)
+                % Python-like Chebyshev field model: Cheb_x(xcoor_) + Cheb_y(ycoor_) + kx0 + Cheb_xy_x(xcoor_)*Cheb_xy_y(ycoor_)
                 % Use OptimizedParams if available, otherwise use ConfigOptimized
                 if hasPythonFieldCorrections
                     PythonParams = OptimizedParams;
@@ -310,7 +310,7 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
                 % ky0 is fixed at 0 in Python, but include for completeness
                 ky0 = getFieldValue(PythonParams, 'ky0', 0);
                 
-                % Python field correction formula (line 388)
+                % Python-like Chebyshev field correction formula (line 388)
                 FieldCorrection_mag = Cheb_x_val + Cheb_y_val + kx0 + ky0 + Cheb_xy_x_val * Cheb_xy_y_val;
                 
             else
@@ -380,7 +380,7 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
     % Save results if requested
     if Args.SaveResults
         filename = sprintf('AbsolutePhotometry_%s.mat', ...
-                          datestr(datetime('now'), 'yyyymmdd_HHMMSS'));
+                          string(datetime('now', 'Format', 'yyyyMMdd_HHmmss')));
         save(filename, 'CatalogAB', 'OptimizedParams', 'MAG_ZP', 'MAG_PSF_AB');
         if Args.Verbose
             fprintf('\nResults saved to: %s\n', filename);
@@ -441,7 +441,7 @@ function ConfigOptimized = updateConfigWithOptimizedParams(Config, OptimizedPara
                 ConfigOptimized.Utils.SkewedGaussianModel.Default_sigma = paramValue;
             case 'Gamma'
                 ConfigOptimized.Utils.SkewedGaussianModel.Default_gamma = paramValue;
-            % Python field correction parameters
+            % Python-like Chebyshev field correction parameters
             case 'kx0'
                 ConfigOptimized.FieldCorrection.Python.kx0 = paramValue;
                 ConfigOptimized.FieldCorrection.Enable = true;

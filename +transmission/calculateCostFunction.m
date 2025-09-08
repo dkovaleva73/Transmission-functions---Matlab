@@ -11,8 +11,8 @@ function [Cost, Residuals, DiffMag] = calculateCostFunction(CalibData, Config, A
     %         - Config - Configuration structure from transmission.inputConfig()
     %         - Args - Optional arguments:
     %           'AbsorptionData' - Pre-loaded absorption data (uses Config.AbsorptionData if not provided)
-    %           'UsePythonFieldModel' - Use Python field correction model (default: false)
-    %           'UseChebyshev' - Use simple Chebyshev field model (default: false) 
+    %           'UsePythonFieldModel' - Use Python-like Chebyshev field correction model (default: false)
+    %           'UseChebyshev' - Use basic Chebyshev field model (default: false) 
     %           'ChebyshevOrder' - Order for Chebyshev polynomials (default: 4)
     %
     % Output: - Cost - Sum of squared magnitude differences
@@ -49,11 +49,11 @@ function [Cost, Residuals, DiffMag] = calculateCostFunction(CalibData, Config, A
     
     % Setup field correction model if requested
     if Args.UsePythonFieldModel
-        % Python field model will use Config.FieldCorrection parameters
+        % Python-like Chebyshev field model will use Config.FieldCorrection parameters
         ChebyshevModel = [];
         UsePythonModel = true;
     elseif Args.UseChebyshev
-        % Setup simple Chebyshev model
+        % Setup basic Chebyshev model
         ChebyshevModel = setupChebyshevModel(CalibData, Args.ChebyshevOrder, Config);
         UsePythonModel = false;
     else
@@ -79,12 +79,12 @@ function [Cost, Residuals, DiffMag] = calculateCostFunction(CalibData, Config, A
     
     % Apply field corrections if provided
     if UsePythonModel
-        % Apply Python field correction model using fieldCorrection
+        % Apply Python-like Chebyshev field correction model using fieldCorrection
         FieldCorrectionMag = transmission.instrumental.fieldCorrection(...
             CalibData.LASTData.X, CalibData.LASTData.Y, Config);
         % Field correction is already in magnitude units, add directly to DiffMag
     elseif ~isempty(ChebyshevModel)
-        % Apply simple Chebyshev model
+        % Apply basic Chebyshev model
         FieldCorrection = evaluateChebyshev(ChebyshevModel, CalibData.LASTData, Config);
         TotalFlux = TotalFlux .* FieldCorrection;
         FieldCorrectionMag = zeros(size(TotalFlux)); % No magnitude correction for simple model
@@ -217,7 +217,7 @@ function AbsorptionData = getCachedAbsorptionData()
         
         % Display loading message (only once)
         fprintf('Absorption data loaded and cached in memory at %s\n', ...
-                datestr(loadTime, 'yyyy-mm-dd HH:MM:SS'));
+                string(loadTime));
     end
     
     AbsorptionData = cachedData;

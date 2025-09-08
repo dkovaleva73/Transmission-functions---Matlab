@@ -10,7 +10,7 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerFminGene
     %           'SigmaClipping' - Enable sigma clipping (default: false)
     %           'SigmaThreshold' - Threshold for sigma clipping (default: 3.0)
     %           'SigmaIterations' - Number of sigma clipping iterations (default: 3)
-    %           'UseChebyshev' - Enable Chebyshev field corrections (default: false)
+    %           'UseChebyshev' - Enable basic Chebyshev field corrections (default: false)
     %           'ChebyshevOrder' - Order of Chebyshev polynomials (default: 4)
     %           'InputData' - Pre-loaded calibrator data (optional)
     %           'Verbose' - Enable verbose output (default: false)
@@ -22,6 +22,7 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerFminGene
     %         - Output - Optimization details from fminsearch
     %         - ResultData - Structure with calibrator data and residuals
     % Author: D. Kovaleva (Aug 2025)
+    % Reference: Garrappa et al. 2025, A&A 699, A50
     % Example:
     %   Config = transmission.inputConfig();
     %   [OptimalParams, Fval] = transmission.minimizerFminGeneric(Config, ...
@@ -39,7 +40,7 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerFminGene
         Args.SigmaIterations double = 3
         Args.UseChebyshev logical = false
         Args.ChebyshevOrder double = 4
-        Args.UsePythonFieldModel logical = false  % Use Python field correction model
+        Args.UsePythonFieldModel logical = false  % Use Python-like Chebyshev field correction model
         Args.InputData = []  % Optional pre-loaded data
         Args.Verbose logical = false
         Args.PlotResults logical = false
@@ -84,7 +85,7 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerFminGene
                     Args.SigmaThreshold, Args.SigmaIterations);
         end
         if Args.UseChebyshev
-            fprintf('Chebyshev field corrections: Enabled (order=%d)\n', Args.ChebyshevOrder);
+            fprintf('Basic Chebyshev field corrections: Enabled (order=%d)\n', Args.ChebyshevOrder);
         end
         fprintf('\n');
     end
@@ -96,17 +97,14 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerFminGene
     % Prepare parameter mapping
     ParamMapping = prepareParameterMapping(Config, FreeParams, FixedParams, InitialValues, Bounds);
     
-    % Load or prepare calibrator data
+    % Use provided calibrator data
     if ~isempty(Args.InputData)
         CalibData = Args.InputData;
         if Verbose
             fprintf('Using provided calibrator data\n');
         end
     else
-        if Verbose
-            fprintf('Loading calibrator data...\n');
-        end
-        CalibData = loadCalibratorData(Config);
+        error('No calibrator data provided. Use InputData parameter to pass pre-loaded calibrator data.');
     end
     
     % Validate we have data
@@ -124,7 +122,7 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerFminGene
     
     % Setup field correction model
     if Args.UsePythonFieldModel
-        % Python field model will use Config parameters
+        % Python-like Chebyshev field model will use Config parameters
         ChebyshevModel = [];  % Not using simple Chebyshev
         UsePythonModel = true;
     elseif Args.UseChebyshev
@@ -146,9 +144,11 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerFminGene
         ConfigLocal = updateConfigFromVector(Config, ParamVector, ParamMapping);
         
         try
-            % Calculate cost with current calibrator data
-            [Cost, Residuals, ~] = calculateCostFunction(CalibData, ConfigLocal, ...
-                                                      AbsorptionData, ChebyshevModel, UsePythonModel);
+            % Calculate cost with current calibrator data using shared function
+            [Cost, Residuals, ~] = transmission.calculateCostFunction(CalibData, ConfigLocal, ...
+                'AbsorptionData', AbsorptionData, ...
+                'UsePythonFieldModel', UsePythonModel, ...
+                'UseChebyshev', ~isempty(ChebyshevModel));
             
             % Store iteration history
             IterationHistory.ParamValues(end+1, :) = ParamVector;
@@ -213,10 +213,12 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerFminGene
                 fprintf('Optimization cycle %d completed. Cost: %.4e\n', sigmaIter, Fval);
             end
             
-            % Calculate residuals with optimal parameters
+            % Calculate residuals with optimal parameters using shared function
             ConfigOptimal = updateConfigFromVector(Config, OptimalVector, ParamMapping);
-            [~, Residuals, ~] = calculateCostFunction(CalibData, ConfigOptimal, ...
-                                                      AbsorptionData, ChebyshevModel, UsePythonModel);
+            [~, Residuals, ~] = transmission.calculateCostFunction(CalibData, ConfigOptimal, ...
+                'AbsorptionData', AbsorptionData, ...
+                'UsePythonFieldModel', UsePythonModel, ...
+                'UseChebyshev', ~isempty(ChebyshevModel));
             
             % Apply sigma clipping
             [ClippedData, outlierMask] = transmission.utils.sigmaClip(CalibData, ...
@@ -239,7 +241,7 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerFminGene
             % Update calibrator data for next iteration
             CalibData = ClippedData;
             
-            % Update Chebyshev model if using field corrections
+            % Update basic Chebyshev model if using field corrections
             if Args.UseChebyshev
                 ChebyshevModel = setupChebyshevModel(CalibData, Args.ChebyshevOrder);
             end
@@ -271,8 +273,10 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerFminGene
     
     % Calculate final residuals and statistics
     ConfigFinal = updateConfigFromVector(Config, OptimalVector, ParamMapping);
-    [~, FinalResiduals, DiffMag] = calculateCostFunction(CalibData, ConfigFinal, ...
-                                                         AbsorptionData, ChebyshevModel, UsePythonModel);
+    [~, FinalResiduals, DiffMag] = transmission.calculateCostFunction(CalibData, ConfigFinal, ...
+        'AbsorptionData', AbsorptionData, ...
+        'UsePythonFieldModel', UsePythonModel, ...
+        'UseChebyshev', ~isempty(ChebyshevModel));
     
     % Prepare result data
     ResultData = struct();
@@ -304,11 +308,6 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerFminGene
         else
             fprintf('Status: Did not converge\n');
         end
-    end
-    
-    % Plot results if requested
-    if PlotResults && ~isempty(IterationHistory.CostValues)
-        plotOptimizationProgress(IterationHistory, ParamMapping, OptimalVector);
     end
     
     % Save results if requested
@@ -436,7 +435,7 @@ function [configPath, defaultValue] = getParameterPath(paramName, Config)
         case 'cy4'
             configPath = 'FieldCorrection.Chebyshev.Y.c4';
             defaultValue = 0;
-        % Python field model parameters (advanced Chebyshev)
+        % Python-like Chebyshev field model parameters (advanced)
         case 'kx0'
             configPath = 'FieldCorrection.kx0';
             defaultValue = 0;
@@ -511,73 +510,6 @@ function params = vectorToParamStruct(ParamVector, ParamMapping)
     end
 end
 
-function CalibData = loadCalibratorData(Config)
-    % Load calibrator data from catalog
-    
- %   CatalogFile = Config.Data.LAST_AstroImage_file;
-    CatalogFile = Config.Data.LAST_catalog_file;
-    SearchRadius = Config.Data.Search_radius_arcsec;
-    
- %   [Spec, Mag, Coords, LASTData, Metadata] = transmission.data.findCalibratorsForAstroImage(...
- %       CatalogFile, SearchRadius);
-     [Spec, Mag, Coords, LASTData, Metadata] = transmission.data.findCalibratorsWithCoords(...
-        CatalogFile, SearchRadius);
-
-    CalibData = struct();
-    CalibData.Spec = Spec;
-    CalibData.Mag = Mag;
-    CalibData.Coords = Coords;
-    CalibData.LASTData = LASTData;
-    CalibData.Metadata = Metadata;
-end
-
-function [Cost, Residuals, DiffMag] = calculateCostFunction(CalibData, ConfigLocal, AbsorptionData, ChebyshevModel, UsePythonModel)
-    % Calculate cost function for current parameters
-    % ConfigLocal contains the updated parameters for this iteration
-    
-    if nargin < 5
-        UsePythonModel = false;
-    end
-    
-    % Apply transmission to calibrators
-    [SpecTrans, Wavelength, ~] = transmission.calibrators.applyTransmissionToCalibrators(...
-        CalibData.Spec, CalibData.Metadata, ConfigLocal, 'AbsorptionData', AbsorptionData);
-    
-    % Convert to flux array
-    if iscell(SpecTrans)
-        TransmittedFluxArray = cell2mat(cellfun(@(x) x(:)', SpecTrans(:,1), 'UniformOutput', false));
-    else
-        TransmittedFluxArray = SpecTrans;
-    end
-    
-    % Calculate total flux - use correct named parameter syntax  
-    TotalFlux = transmission.calibrators.calculateTotalFluxCalibrators(...
-        Wavelength, TransmittedFluxArray, CalibData.Metadata, ...
-        'Norm_', ConfigLocal.General.Norm_);
-    
-    % Apply field corrections if provided
-    if UsePythonModel
-        % Apply Python field correction model using fieldCorrection
-        FieldCorrectionMag = transmission.instrumental.fieldCorrection(...
-            CalibData.LASTData.X, CalibData.LASTData.Y, ConfigLocal);
-        % Convert magnitude correction to multiplicative flux factor
-      %  FieldCorrection = 10.^(-0.4 * FieldCorrectionMag);
-      %  TotalFlux = TotalFlux .* FieldCorrection;
-      
-   % elseif ~isempty(ChebyshevModel)
-        % Apply simple Chebyshev model
-   %     FieldCorrection = evaluateChebyshev(ChebyshevModel, CalibData.LASTData, ConfigLocal);
-   %     TotalFlux = TotalFlux .* FieldCorrection;
-    end
-    
-    % Calculate magnitude differences
-    DiffMag = 2.5 * log10(TotalFlux ./ CalibData.LASTData.FLUX_APER_3) + FieldCorrectionMag;
-    
-    % Calculate residuals and cost
-    Residuals = DiffMag;
-    Cost = sum(DiffMag.^2);
-end
-
 function ChebyshevModel = setupChebyshevModel(CalibData, order)
     % Setup Chebyshev polynomial model for field corrections
     
@@ -595,7 +527,7 @@ function ChebyshevModel = setupChebyshevModel(CalibData, order)
 end
 
 function FieldCorrection = evaluateChebyshev(ChebyshevModel, LASTData, Config)
-    % Evaluate Chebyshev field corrections using utils/chebyshevModel
+    % Evaluate basic Chebyshev field corrections using utils/chebyshevModel
     
     % Extract Chebyshev coefficients from Config if they exist
     if isfield(Config, 'FieldCorrection') && isfield(Config.FieldCorrection, 'Chebyshev')
@@ -660,42 +592,6 @@ function FieldCorrection = evaluateChebyshev(ChebyshevModel, LASTData, Config)
 end
 
 
-function plotOptimizationProgress(IterationHistory, ParamMapping, OptimalVector)
-    % Plot optimization progress
-    
-    figure('Name', 'Optimization Progress', 'Position', [100, 100, 1200, 600]);
-    
-    % Plot cost function
-    subplot(1, 2, 1);
-    semilogy(IterationHistory.CostValues, 'o-', 'LineWidth', 2);
-    xlabel('Iteration');
-    ylabel('Cost Function');
-    title('Cost Function vs Iteration');
-    grid on;
-    
-    % Mark optimal point
-    hold on;
-    [MinCost, MinIdx] = min(IterationHistory.CostValues);
-    plot(MinIdx, MinCost, 'r*', 'MarkerSize', 15, 'LineWidth', 2);
-    hold off;
-    
-    % Plot parameter evolution
-    subplot(1, 2, 2);
-    hold on;
-    colors = lines(ParamMapping.NumParams);
-    for i = 1:ParamMapping.NumParams
-        plot(IterationHistory.ParamValues(:, i), 'o-', ...
-             'Color', colors(i, :), 'LineWidth', 2, ...
-             'DisplayName', char(ParamMapping.Names{i}));
-    end
-    xlabel('Iteration');
-    ylabel('Parameter Value');
-    title('Parameter Evolution');
-    legend('Location', 'best');
-    grid on;
-    hold off;
-end
-
 function saveOptimizationResults(OptimalParams, Fval, ExitFlag, Output, ...
                                 ResultData, IterationHistory, Config, OptimizationTime)
     % Save optimization results to file
@@ -712,7 +608,7 @@ function saveOptimizationResults(OptimalParams, Fval, ExitFlag, Output, ...
     Results.OptimizationTimeSeconds = OptimizationTime;
     
     Filename = sprintf('minimizerFminGeneric_results_%s.mat', ...
-                      datestr(datetime('now'), 'yyyymmdd_HHMMSS'));
+                      string(datetime('now', 'Format', 'yyyyMMdd_HHmmss')));
     save(Filename, 'Results');
     
     fprintf('\nResults saved to: %s\n', Filename);

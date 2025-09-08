@@ -280,7 +280,7 @@ function saveWorkflowResults(Results, outputDir, verbose)
     end
     
     % Generate timestamp for filenames
-    timestamp = datestr(now, 'yyyymmdd_HHMMSS');
+    timestamp = string(datetime('now', 'Format', 'yyyyMMdd_HHmmss'));
     
     % Save complete results structure
     resultsFile = fullfile(outputDir, sprintf('calibrator_workflow_results_%s.mat', timestamp));

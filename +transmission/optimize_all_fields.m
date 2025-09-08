@@ -6,7 +6,7 @@
 %% Initialize
 clear; close all;
 fprintf('=== OPTIMIZING ALL 24 FIELDS ===\n');
-fprintf('Starting at: %s\n\n', datestr(datetime('now')));
+fprintf('Starting at: %s\n\n', string(datetime('now')));
 
 % Load configuration
 Config = transmission.inputConfig();
@@ -102,7 +102,7 @@ for i = 1:length(all_param_names)
 end
 
 %% Save results
-timestamp = datestr(datetime('now'), 'yyyymmdd_HHMMSS');
+timestamp = string(datetime('now', 'Format', 'yyyyMMdd_HHmmss'));
 mat_filename = sprintf('optimization_all_fields_%s.mat', timestamp);
 csv_filename = sprintf('optimization_all_fields_%s.csv', timestamp);
 
@@ -131,4 +131,4 @@ if height(successful_fields) > 0
 end
 
 fprintf('\n=== OPTIMIZATION COMPLETE ===\n');
-fprintf('Finished at: %s\n', datestr(datetime('now')));
+fprintf('Finished at: %s\n', string(datetime('now')));

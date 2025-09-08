@@ -1,12 +1,13 @@
 classdef TransmissionOptimizer < handle
-    % TransmissionOptimizer - Controller class for sequential transmission optimization
-    % This class manages the optimization sequence, stores results between stages,
-    % and coordinates the overall calibration process following the fitutils.py pattern
-    % Author: D. Kovaleva (Aug 2025)
-    % Example:
-    %   Config = transmission.inputConfig();
-    %   optimizer = transmission.TransmissionOptimizer(Config);
-    %   finalParams = optimizer.runFullSequence();
+    % Description:  Controller class for sequential transmission optimization
+    %               This class manages the optimization sequence, stores results between stages,
+    %               and coordinates the overall calibration process following the Garappa et al. (2025) pattern
+    % Author:    D. Kovaleva (Sep 2025)
+    % Reference: Garrappa et al. 2025, A&A 699, A50
+    % Example:  Config = transmission.inputConfig();
+    %           optimizer = transmission.TransmissionOptimizer(Config);
+    %           finalParams = optimizer.runFullSequence();
+    %           calibrators = optimizer.getCalibratorResults; % optimized fluxes for calibrators                                             % fluxes for calibrators
     
     properties
         Config              % Transmission configuration
@@ -14,8 +15,7 @@ classdef TransmissionOptimizer < handle
         OptimizedParams     % Accumulated optimized parameters
         CurrentStage        % Current stage index
         CalibratorData      % Calibrator data (persists between stages)
-        AbsorptionData      % Pre-loaded absorption data
-        ChebyshevModel      % Chebyshev field correction model
+        ChebyshevModel      % Basic Chebyshev field correction model
         SigmaClippingEnabled % Global sigma clipping enable/disable
         Verbose             % Verbose output flag
         Results             % Store results from each stage
@@ -28,8 +28,8 @@ classdef TransmissionOptimizer < handle
             arguments
                 Config = transmission.inputConfig()
                 Args.Sequence string = "DefaultSequence"
-            %    Args.Sequence string = "AtmosphericOnly"
-            %    Args.Sequence string = "FieldCorrectionOnly"
+           %     Args.Sequence string = "AtmosphericOnly"
+           %     Args.Sequence string = "FieldCorrectionOnly"
                 Args.SigmaClippingEnabled logical = true
                 Args.Verbose logical = true
                 Args.SaveIntermediateResults logical = false
@@ -46,16 +46,10 @@ classdef TransmissionOptimizer < handle
             switch Args.Sequence
                 case "DefaultSequence"
                     obj.ActiveSequence = transmission.TransmissionOptimizer.defineDefaultSequence();
-                case "SimpleFieldCorrection"
-                    obj.ActiveSequence = transmission.TransmissionOptimizer.defineSimpleFieldCorrectionSequence();
                 case "AtmosphericOnly"
                     obj.ActiveSequence = transmission.TransmissionOptimizer.defineAtmosphericSequence();
-                case "QuickCalibration"
-                    obj.ActiveSequence = transmission.TransmissionOptimizer.defineQuickSequence();
                 case "FieldCorrectionOnly"
                     obj.ActiveSequence = transmission.TransmissionOptimizer.defineFieldCorrectionSequence();
-                case "Custom"
-                    obj.ActiveSequence = [];  % To be set using setCustomSequence
                 otherwise
                     error('Unknown sequence: %s', Args.Sequence);
             end
@@ -68,8 +62,7 @@ classdef TransmissionOptimizer < handle
                 fprintf('\n');
             end
         end
-        
-        
+             
         function setCustomSequence(obj, customStages)
             % Set a custom optimization sequence
             
@@ -102,8 +95,7 @@ classdef TransmissionOptimizer < handle
             % Load initial calibrator data for specified field
             obj.loadCalibratorData(fieldNum);
             
-            % Preload absorption data for efficiency ---CHECK!!!!!!!!!!!!!!
-            obj.loadAbsorptionData();
+            % Absorption data is already available in Config.AbsorptionData
             
             % Run each stage
             for stageIdx = 1:length(obj.ActiveSequence)
@@ -172,8 +164,7 @@ classdef TransmissionOptimizer < handle
             if ismember("Norm_", string(stage.freeParams)) && isfield(obj.OptimizedParams, 'Norm_')
                 Args.InitialValues.Norm_ = obj.OptimizedParams.Norm_;
             end
-            
-            
+                      
             % Handle sigma clipping
             if isfield(stage, 'sigmaClipping') && any(stage.sigmaClipping) && obj.SigmaClippingEnabled
                 Args.SigmaClipping = true;
@@ -183,7 +174,7 @@ classdef TransmissionOptimizer < handle
                 Args.SigmaClipping = false;
             end
             
-            % Handle Chebyshev field corrections
+            % Handle basic Chebyshev field corrections 
             if isfield(stage, 'useChebyshev') && any(stage.useChebyshev)
                 Args.UseChebyshev = true;
                 if isfield(stage, 'chebyshevOrder')
@@ -191,7 +182,7 @@ classdef TransmissionOptimizer < handle
                 end
             end
             
-            % Handle Python field model (advanced Chebyshev)
+            % Handle Python-like Chebyshev field model (advanced)
             if isfield(stage, 'usePythonFieldModel') && any(stage.usePythonFieldModel)
                 Args.UsePythonFieldModel = true;
                 % Add any fixed parameters for Python model (e.g., ky0 = 0)
@@ -306,19 +297,6 @@ classdef TransmissionOptimizer < handle
             end
         end
         
-        function loadAbsorptionData(obj)
-            % Get absorption data from Config (already cached in memory)
-            
-            if obj.Verbose
-                fprintf('Using cached absorption data from Config...\n');
-            end
-            
-            obj.AbsorptionData = obj.Config.AbsorptionData;
-            
-            if obj.Verbose
-                fprintf('Absorption data ready\n');
-            end
-        end
         
         function updateOptimizedParams(obj, newParams)
             % Update the accumulated optimized parameters
@@ -329,17 +307,12 @@ classdef TransmissionOptimizer < handle
             end
         end
         
-        
-        
-        
-        
-        
         function saveResults(obj, filename)
             % Save optimization results to file
             
             if nargin < 2
                 filename = sprintf('TransmissionOptimizer_results_%s.mat', ...
-                                  datestr(datetime('now'), 'yyyymmdd_HHMMSS'));
+                                  string(datetime('now', 'Format', 'yyyyMMdd_HHmmss')));
             end
             
             SavedData = struct();
@@ -355,82 +328,8 @@ classdef TransmissionOptimizer < handle
                 fprintf('Results saved to: %s\n', filename);
             end
         end
-        
-        function plotOptimizationProgress(obj)
-            % Plot optimization progress across all stages
-            
-            if isempty(obj.Results)
-                warning('No results to plot');
-                return;
-            end
-            
-            figure('Name', 'Multi-Stage Optimization Progress', 'Position', [100, 100, 1400, 600]);
-            
-            % Extract costs from each stage
-            stageCosts = cellfun(@(x) x.Fval, obj.Results);
-            stageNames = arrayfun(@(x) x.name, obj.ActiveSequence, 'UniformOutput', false);
-            
-            % Plot 1: Cost per stage
-            subplot(1, 3, 1);
-            bar(stageCosts);
-            xlabel('Stage');
-            ylabel('Final Cost');
-            title('Cost by Stage');
-            set(gca, 'XTickLabel', stageNames);
-            xtickangle(45);
-            grid on;
-            
-            % Plot 2: Cumulative parameter changes
-            subplot(1, 3, 2);
-            hold on;
-            
-            allParams = {};
-            paramValues = [];
-            
-            for i = 1:length(obj.Results)
-                stageParams = obj.Results{i}.OptimalParams;
-                paramNames = fieldnames(stageParams);
-                
-                for j = 1:length(paramNames)
-                    paramIdx = find(strcmp(allParams, paramNames{j}));
-                    if isempty(paramIdx)
-                        allParams{end+1} = paramNames{j};
-                        paramIdx = length(allParams);
-                        paramValues(paramIdx, :) = NaN(1, i-1);
-                    end
-                    paramValues(paramIdx, i) = stageParams.(paramNames{j});
-                end
-            end
-            
-            colors = lines(length(allParams));
-            for i = 1:length(allParams)
-                validIdx = ~isnan(paramValues(i, :));
-                plot(find(validIdx), paramValues(i, validIdx), 'o-', ...
-                     'Color', colors(i, :), 'LineWidth', 2, ...
-                     'DisplayName', allParams{i});
-            end
-            
-            xlabel('Stage');
-            ylabel('Parameter Value');
-            title('Parameter Evolution');
-            legend('Location', 'best');
-            grid on;
-            hold off;
-            
-            % Plot 3: Number of calibrators per stage
-            subplot(1, 3, 3);
-            numCalibrators = cellfun(@(x) x.ResultData.NumCalibrators, obj.Results);
-            bar(numCalibrators);
-            xlabel('Stage');
-            ylabel('Number of Calibrators');
-            title('Calibrators After Sigma Clipping');
-            set(gca, 'XTickLabel', stageNames);
-            xtickangle(45);
-            grid on;
-            
-            sgtitle('Multi-Stage Optimization Progress');
-        end
-        
+       
+     
         function params = getOptimizedParams(obj)
             % Get current optimized parameters
             params = obj.OptimizedParams;
@@ -506,8 +405,8 @@ classdef TransmissionOptimizer < handle
     
     methods (Static)
         function stages = defineDefaultSequence()
-            % Define the Python-compliant optimization sequence from fitutils.py
-            % Uses advanced Chebyshev field correction model
+            
+            % Uses Python-like optimization sequence and Chebyshev field correction model
             
             % Stage 1: Normalize only with sigma clipping
             stages(1).name = "NormOnly_Initial";
@@ -515,15 +414,15 @@ classdef TransmissionOptimizer < handle
             stages(1).sigmaClipping = true;
             stages(1).sigmaThreshold = 3.0;
             stages(1).sigmaIterations = 3;
-            stages(1).usePythonFieldModel = true;  % Use Python field correction model
+            stages(1).usePythonFieldModel = true;  % Use Python-like Chebyshev field correction model
             stages(1).fixedParams = struct('ky0', 0);  % Keep ky0 fixed at 0
             stages(1).description = "Initial normalization with outlier removal";
             
-            % Stage 2: Norm + QE center (no sigma clipping in fitutils.py)
+            % Stage 2: Norm + QE center (no sigma clipping)
             stages(2).name = "NormAndCenter";
             stages(2).freeParams = ["Norm_", "Center"];
             stages(2).sigmaClipping = false;
-            stages(2).usePythonFieldModel = true;  % Use Python field correction model
+            stages(2).usePythonFieldModel = true;  % Use Python-like Chebyshev field correction model
             stages(2).fixedParams = struct('ky0', 0);  % Keep ky0 fixed at 0
             stages(2).description = "Optimize normalization and QE center";
             
@@ -532,24 +431,24 @@ classdef TransmissionOptimizer < handle
             stages(3).name = "FieldCorrection_Python";
             stages(3).freeParams = ["kx0", "kx", "ky", "kx2", "ky2", "kx3", "ky3", "kx4", "ky4", "kxy"];
             stages(3).fixedParams = struct('ky0', 0);  % ky0 = 0 and fixed
-            stages(3).usePythonFieldModel = true;  % Use Python field correction model
+            stages(3).usePythonFieldModel = true;  % Use Python-like Chebyshev field correction model
             stages(3).sigmaClipping = true;
             stages(3).sigmaThreshold = 2.0;  % Tighter threshold
             stages(3).sigmaIterations = 3;
-            stages(3).description = "Python-compliant Chebyshev field corrections";
+            stages(3).description = "Python-like Chebyshev field corrections";
             
             % Stage 4: Norm refinement
             stages(4).name = "NormRefinement";
             stages(4).freeParams = "Norm_";
             stages(4).sigmaClipping = false;
-            stages(4).usePythonFieldModel = true;  % Use Python field correction model
+            stages(4).usePythonFieldModel = true;  % Use Python-like Chebyshev field correction model
             stages(4).fixedParams = struct('ky0', 0);  % Keep ky0 fixed at 0
             stages(4).description = "Refine normalization after field corrections";
             
             % Stage 5: Atmospheric parameters
             stages(5).name = "Atmospheric";
             stages(5).freeParams = ["Pwv_cm", "Tau_aod500"];
-            stages(5).usePythonFieldModel = true;  % Use Python field correction model
+            stages(5).usePythonFieldModel = true;  % Use Python-like Chebyshev field correction model
             stages(5).sigmaClipping = false;
             stages(5).fixedParams = struct('ky0', 0);  % Keep ky0 fixed at 0
             stages(5).description = "Optimize water vapor and aerosol parameters";
@@ -581,7 +480,7 @@ classdef TransmissionOptimizer < handle
             stages(3).sigmaClipping = true;
             stages(3).sigmaThreshold = 2.0;
             stages(3).sigmaIterations = 3;
-            stages(3).description = "Simple Chebyshev field correction coefficients";
+            stages(3).description = "Basic Chebyshev field correction coefficients";
             
             % Stage 4: Norm refinement
             stages(4).name = "NormRefinement";
@@ -607,7 +506,7 @@ classdef TransmissionOptimizer < handle
             stages(1).sigmaIterations = 3;
             stages(1).description = "Initial normalization with outlier removal";
             
-            % Stage 2: Norm + QE center (no sigma clipping in fitutils.py)
+            % Stage 2: Norm + QE center (no sigma clipping)
             stages(2).name = "NormAndCenter";
             stages(2).freeParams = ["Norm_", "Center"];
             stages(2).sigmaClipping = false;
@@ -656,7 +555,7 @@ classdef TransmissionOptimizer < handle
             stages(2).sigmaClipping = true;
             stages(2).sigmaThreshold = 2.0;  % Tighter threshold
             stages(2).sigmaIterations = 3;
-            stages(2).description = "Python-compliant Chebyshev field corrections";
+            stages(2).description = "Python-like Chebyshev field corrections";
         end
 
         function validateSequence(stages)

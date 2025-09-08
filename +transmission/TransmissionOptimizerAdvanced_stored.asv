@@ -49,6 +49,8 @@ classdef TransmissionOptimizerAdvanced < handle
             switch Args.Sequence
                 case "DefaultSequence"
                     obj.ActiveSequence = obj.defineAdvancedSequence();
+                case "SimpleFieldCorrection"
+                    obj.ActiveSequence = obj.defineSimpleFieldCorrectionSequence();
                 case "AtmosphericOnly"
                     obj.ActiveSequence = obj.defineAtmosphericSequence();
                 case "FieldCorrectionOnly"
@@ -313,7 +315,7 @@ classdef TransmissionOptimizerAdvanced < handle
             end
         end
         
-        function ConfigUpdated = updateConfigWithOptimizedParams(~, Config, OptimizedParams)
+        function ConfigUpdated = updateConfigWithOptimizedParams(obj, Config, OptimizedParams)
             % Update Config structure with optimized parameters
             ConfigUpdated = Config;
             
@@ -354,16 +356,13 @@ classdef TransmissionOptimizerAdvanced < handle
             end
         end
         
-        function argCell = structToNameValuePairs(~, Args)
+        function argCell = structToNameValuePairs(obj, Args)
             % Convert arguments structure to name-value pairs
             
+            argCell = {};
             argFields = fieldnames(Args);
-            numFields = length(argFields);
-            argCell = cell(1, numFields * 2);  % Preallocate: each field needs name and value
-            
-            for i = 1:numFields
-                argCell{2*i-1} = argFields{i};      % Field name
-                argCell{2*i} = Args.(argFields{i}); % Field value
+            for i = 1:length(argFields)
+                argCell = [argCell, {argFields{i}, Args.(argFields{i})}];
             end
         end
         
