@@ -23,11 +23,10 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerFminGene
     %         - ResultData - Structure with calibrator data and residuals
     % Author: D. Kovaleva (Aug 2025)
     % Reference: Garrappa et al. 2025, A&A 699, A50
-    % Example:
-    %   Config = transmission.inputConfig();
-    %   [OptimalParams, Fval] = transmission.minimizerFminGeneric(Config, ...
-    %       'FreeParams', ["Norm_", "Tau_aod500"], ...
-    %       'FixedParams', struct('Pwv_cm', 2.0));
+    % Example:   Config = transmission.inputConfig();
+    %            [OptimalParams, Fval] = transmission.minimizerFminGeneric(Config, ...
+    %            'FreeParams', ["Norm_", "Tau_aod500"], ...
+    %            'FixedParams', struct('Pwv_cm', 2.0));
     
     arguments
         Config = transmission.inputConfig()
@@ -116,9 +115,7 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerFminGene
         fprintf('Found %d calibrators\n', length(CalibData.Spec));
     end
     
-    % Preload absorption data for efficiency
-    % Get absorption data from Config (already cached in memory)
-    AbsorptionData = Config.AbsorptionData;
+    % Absorption data is available in Config.AbsorptionData (cached during inputConfig)
     
     % Setup field correction model
     if Args.UsePythonFieldModel
@@ -146,7 +143,6 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerFminGene
         try
             % Calculate cost with current calibrator data using shared function
             [Cost, Residuals, ~] = transmission.calculateCostFunction(CalibData, ConfigLocal, ...
-                'AbsorptionData', AbsorptionData, ...
                 'UsePythonFieldModel', UsePythonModel, ...
                 'UseChebyshev', ~isempty(ChebyshevModel));
             
@@ -216,7 +212,6 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerFminGene
             % Calculate residuals with optimal parameters using shared function
             ConfigOptimal = updateConfigFromVector(Config, OptimalVector, ParamMapping);
             [~, Residuals, ~] = transmission.calculateCostFunction(CalibData, ConfigOptimal, ...
-                'AbsorptionData', AbsorptionData, ...
                 'UsePythonFieldModel', UsePythonModel, ...
                 'UseChebyshev', ~isempty(ChebyshevModel));
             
@@ -274,7 +269,6 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerFminGene
     % Calculate final residuals and statistics
     ConfigFinal = updateConfigFromVector(Config, OptimalVector, ParamMapping);
     [~, FinalResiduals, DiffMag] = transmission.calculateCostFunction(CalibData, ConfigFinal, ...
-        'AbsorptionData', AbsorptionData, ...
         'UsePythonFieldModel', UsePythonModel, ...
         'UseChebyshev', ~isempty(ChebyshevModel));
     
@@ -562,21 +556,17 @@ function FieldCorrection = evaluateChebyshev(ChebyshevModel, LASTData, Config)
             X = ChebyshevModel.XNorm;
             Y = ChebyshevModel.YNorm;
             
-            % Chebyshev polynomials for X
+            % Chebyshev polynomials for X using utility function
             Tx = zeros(length(X), 5);
-            Tx(:, 1) = 1;
-            Tx(:, 2) = X;
-            Tx(:, 3) = 2*X.^2 - 1;
-            Tx(:, 4) = 4*X.^3 - 3*X;
-            Tx(:, 5) = 8*X.^4 - 8*X.^2 + 1;
+            for i = 0:4
+                Tx(:, i+1) = transmission.utils.evaluateChebyshevPolynomial(X, i);
+            end
             
-            % Chebyshev polynomials for Y
+            % Chebyshev polynomials for Y using utility function
             Ty = zeros(length(Y), 5);
-            Ty(:, 1) = 1;
-            Ty(:, 2) = Y;
-            Ty(:, 3) = 2*Y.^2 - 1;
-            Ty(:, 4) = 4*Y.^3 - 3*Y;
-            Ty(:, 5) = 8*Y.^4 - 8*Y.^2 + 1;
+            for i = 0:4
+                Ty(:, i+1) = transmission.utils.evaluateChebyshevPolynomial(Y, i);
+            end
             
             % Combine corrections: multiplicative model
             CorrectionX = Tx * cx;
@@ -587,7 +577,7 @@ function FieldCorrection = evaluateChebyshev(ChebyshevModel, LASTData, Config)
         end
     else
         % No field correction coefficients defined
-        FieldCorrection = ones(height(LASTData), 1);
+        FieldCorrection = zeros(height(LASTData), 1);
     end
 end
 

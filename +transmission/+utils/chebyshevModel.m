@@ -30,7 +30,7 @@ function Cheb_model = chebyshevModel(Dat, Config)
     Target_min = Config.Utils.RescaleInputData.Target_min;
     Target_max = Config.Utils.RescaleInputData.Target_max;
     
-    % Transform wavelength to target range for Chebyshev polynomials
+    % Transform coordinates to target range for Chebyshev polynomials
     Re_Dat = transmission.utils.rescaleInputData(Dat, min(Dat), max(Dat), Target_min, Target_max, Config);
     Re_Dat = Re_Dat(:);  % Ensure column vector
 

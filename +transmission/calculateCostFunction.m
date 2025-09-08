@@ -10,7 +10,6 @@ function [Cost, Residuals, DiffMag] = calculateCostFunction(CalibData, Config, A
     %           .Metadata - Observation metadata
     %         - Config - Configuration structure from transmission.inputConfig()
     %         - Args - Optional arguments:
-    %           'AbsorptionData' - Pre-loaded absorption data (uses Config.AbsorptionData if not provided)
     %           'UsePythonFieldModel' - Use Python-like Chebyshev field correction model (default: false)
     %           'UseChebyshev' - Use basic Chebyshev field model (default: false) 
     %           'ChebyshevOrder' - Order for Chebyshev polynomials (default: 4)
@@ -29,22 +28,16 @@ function [Cost, Residuals, DiffMag] = calculateCostFunction(CalibData, Config, A
     arguments
         CalibData struct
         Config = transmission.inputConfig()
-        Args.AbsorptionData = []
         Args.UsePythonFieldModel logical = false
         Args.UseChebyshev logical = false
         Args.ChebyshevOrder double = 4
     end
     
-    % Get absorption data
-    if isempty(Args.AbsorptionData)
-        if isfield(Config, 'AbsorptionData')
-            AbsorptionData = Config.AbsorptionData;
-        else
-            % Load if not in Config
-            AbsorptionData = getCachedAbsorptionData();
-        end
+    % Get absorption data from Config (loaded during inputConfig)
+    if isfield(Config, 'AbsorptionData')
+        AbsorptionData = Config.AbsorptionData;
     else
-        AbsorptionData = Args.AbsorptionData;
+        error('AbsorptionData not found in Config. Ensure transmission.inputConfig() was called properly.');
     end
     
     % Setup field correction model if requested
@@ -168,21 +161,17 @@ function FieldCorrection = evaluateChebyshev(ChebyshevModel, LASTData, Config)
             X = ChebyshevModel.XNorm;
             Y = ChebyshevModel.YNorm;
             
-            % Chebyshev polynomials for X
+            % Chebyshev polynomials for X using utility function
             Tx = zeros(length(X), 5);
-            Tx(:, 1) = 1;
-            Tx(:, 2) = X;
-            Tx(:, 3) = 2*X.^2 - 1;
-            Tx(:, 4) = 4*X.^3 - 3*X;
-            Tx(:, 5) = 8*X.^4 - 8*X.^2 + 1;
+            for i = 0:4
+                Tx(:, i+1) = transmission.utils.evaluateChebyshevPolynomial(X, i);
+            end
             
-            % Chebyshev polynomials for Y
+            % Chebyshev polynomials for Y using utility function
             Ty = zeros(length(Y), 5);
-            Ty(:, 1) = 1;
-            Ty(:, 2) = Y;
-            Ty(:, 3) = 2*Y.^2 - 1;
-            Ty(:, 4) = 4*Y.^3 - 3*Y;
-            Ty(:, 5) = 8*Y.^4 - 8*Y.^2 + 1;
+            for i = 0:4
+                Ty(:, i+1) = transmission.utils.evaluateChebyshevPolynomial(Y, i);
+            end
             
             % Combine corrections: multiplicative model
             CorrectionX = Tx * cx;

@@ -81,8 +81,7 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerLinearLe
         fprintf('Found %d calibrators\n', length(CalibData.Spec));
     end
     
-    % Get absorption data from Config (already cached in memory)
-    AbsorptionData = Config.AbsorptionData;
+    % Absorption data is available in Config.AbsorptionData (cached during inputConfig)
     
     % Store original calibrator data for sigma clipping
     OriginalCalibData = CalibData;
@@ -110,7 +109,6 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerLinearLe
             % Solve linear least squares using utility function
             [OptimalParams, Fval, SolverOutput] = transmission.utils.linearFieldCorrection(CalibData, Config, ...
                 Args.FreeParams, Args.FixedParams, ...
-                'AbsorptionData', AbsorptionData, ...
                 'Regularization', Args.Regularization, ...
                 'Verbose', Args.Verbose);
             
@@ -124,7 +122,6 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerLinearLe
             % Calculate residuals for sigma clipping
             ConfigOptimal = updateConfigWithParams(Config, OptimalParams, Args.FixedParams);
             [~, Residuals, ~] = transmission.calculateCostFunction(CalibData, ConfigOptimal, ...
-                'AbsorptionData', AbsorptionData, ...
                 'UsePythonFieldModel', true);
             
             % Apply sigma clipping
@@ -156,7 +153,6 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerLinearLe
         % Single linear least squares solution without sigma clipping using utility function
         [OptimalParams, Fval, SolverOutput] = transmission.utils.linearFieldCorrection(CalibData, Config, ...
             Args.FreeParams, Args.FixedParams, ...
-            'AbsorptionData', AbsorptionData, ...
             'Regularization', Args.Regularization, ...
             'Verbose', Args.Verbose);
         Output = SolverOutput;
@@ -165,7 +161,6 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerLinearLe
     % Calculate final residuals and statistics
     ConfigFinal = updateConfigWithParams(Config, OptimalParams, Args.FixedParams);
     [~, FinalResiduals, DiffMag] = transmission.calculateCostFunction(CalibData, ConfigFinal, ...
-        'AbsorptionData', AbsorptionData, ...
         'UsePythonFieldModel', true);
     
     % Prepare result data
@@ -194,10 +189,6 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerLinearLe
 end
 
 %% Helper Functions
-
-
-
-
 
 function ConfigUpdated = updateConfigWithParams(Config, OptimalParams, FixedParams)
     % Update Config structure with optimized and fixed parameters
