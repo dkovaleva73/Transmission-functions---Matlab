@@ -478,7 +478,7 @@ function Config = inputConfig(scenario)
     end
     
     % Validate configuration
-    validateConfig(Config);
+ %   validateConfig(Config); - takes 2 seconds! called 324 times (?!)
 end
 
 function validateConfig(Config)

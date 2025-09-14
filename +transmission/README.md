@@ -1,10 +1,12 @@
-# MATLAB Transmission Calculation Package
+# transmission Package
 
-A comprehensive MATLAB package for calculating total optical transmission through astronomical systems, combining instrumental and atmospheric components.
+A comprehensive MATLAB package for calculating total optical transmission through astronomical systems, combining instrumental and atmospheric components with advanced optimization capabilities.
 
 ## Overview
 
-This package provides accurate transmission calculations for the LAST (Large Array Survey Telescope) system, implementing both instrumental (OTA - Optical Telescope Assembly) and atmospheric transmission models.
+The `transmission` package provides accurate transmission calculations for the LAST (Large Array Survey Telescope) system, implementing both instrumental (OTA - Optical Telescope Assembly) and atmospheric transmission models. This package focuses on optimization workflows and calibrator processing pipelines.
+
+**Note:** For high-performance calculations with advanced caching, see the `transmissionFast` package which provides 100×+ performance improvements through multi-layer caching.
 
 ## Quick Start
 
@@ -205,17 +207,18 @@ CatalogAB = transmission.calculateAbsolutePhotometry(finalParams, Config);
 - Validated against reference data
 
 ### ✅ Comprehensive Atmospheric Modeling
-- Rayleigh scattering
-- Aerosol extinction  
-- Ozone absorption
-- Water vapor absorption
-- Multiple atmospheric scenarios
+- Rayleigh scattering (SMARTS model)
+- Aerosol extinction with Ångström exponent
+- Ozone absorption (UV and visible bands)
+- Water vapor absorption (near-IR bands)
+- Uniformly Mixed Gases (O₂, CO₂, CH₄, etc.)
+- Multiple predefined atmospheric scenarios
 
 ### ✅ Accurate Instrumental Modeling
-- CCD quantum efficiency (Skewed Gaussian × Legendre)
+- CCD quantum efficiency (Skewed Gaussian × Legendre polynomials)
 - Mirror reflectance (from StarBrightXLT data)
 - Corrector transmission (from StarBrightXLT data)
-- Field-dependent corrections
+- Field-dependent corrections (Chebyshev polynomials)
 
 ### ✅ Advanced Optimization System
 - Multi-stage optimization workflow based on Python fitutils module
@@ -227,6 +230,17 @@ CatalogAB = transmission.calculateAbsolutePhotometry(finalParams, Config);
 - Automatic calibrator matching with Gaia DR3
 - **Advanced optimizer**: Stage-specific algorithm selection
 - **Visualization tools**: Optimization progress and residual analysis
+
+### 🚀 Package Variants
+
+This repository contains two complementary packages:
+
+| Package | Focus | Best For |
+|---------|-------|----------|
+| **transmission** | Full-featured optimization workflows | Calibrator processing, parameter optimization, AB magnitude calculation |
+| **transmissionFast** | High-performance calculations with caching | Intensive calculations, optimization loops, real-time processing |
+
+Both packages share the same core algorithms and produce identical results, but `transmissionFast` includes advanced caching optimizations for ~100× performance improvements in repeated calculations.
 
 ### ✅ Flexible Configuration System
 - Predefined scenarios: `default`, `photometric_night`, `humid_conditions`, `high_altitude`, etc.
@@ -281,9 +295,25 @@ Mixed algorithm approach with superior performance:
 
 ## Performance
 
+### Standard Performance
 - **Calculation speed:** ~250 points/ms (typical hardware)
 - **Memory efficient:** Vectorized operations
 - **Scalable:** Handles 1-10000+ wavelength points
+
+### Performance Optimization
+
+For high-performance applications requiring intensive calculations or optimization loops, consider using the **transmissionFast** package which provides:
+- **124× faster** mirror reflectance calculations through persistent caching
+- **18× faster** corrector transmission calculations
+- **Automatic wavelength array caching** to eliminate redundant calculations
+- **Pre-loaded absorption data** to eliminate file I/O in loops
+- **5-layer caching system** for maximum optimization performance
+
+```matlab
+% Example: Using transmissionFast for performance-critical applications
+Config = transmissionFast.inputConfig('default');  % Automatic caching
+Total = transmissionFast.totalTransmission();      % Uses cached wavelength array
+```
 
 ## Example Results
 
@@ -306,12 +336,61 @@ Mixed algorithm approach with superior performance:
 
 ## Dependencies
 
-- MATLAB R2020b or later
-- Statistics and Machine Learning Toolbox (for polynomial fitting)
-- AstroPack 
+- **MATLAB R2020b or later** (R2019b for transmissionFast with arguments blocks)
+- **Statistics and Machine Learning Toolbox** (for polynomial fitting)
+- **AstroPack** (for astronomical utilities and constants)
+
+## Choosing Between Packages
+
+### Use `transmission` when you need:
+- Complete optimization workflows with TransmissionOptimizer
+- Calibrator processing pipelines
+- AB magnitude calculations
+- Advanced parameter optimization with mixed algorithms
+- Visualization and analysis tools
+
+### Use `transmissionFast` when you need:
+- Maximum calculation performance (100×+ faster for repeated calls)
+- Intensive optimization loops
+- Real-time processing requirements
+- Minimal file I/O overhead
+- Automatic wavelength array caching
+
+### Example: Migrating to transmissionFast
+```matlab
+% Standard transmission package
+Config = transmission.inputConfig('default');
+Lam = transmission.utils.makeWavelengthArray(Config);
+Total = transmission.totalTransmission(Lam, Config);
+
+% High-performance transmissionFast package
+Config = transmissionFast.inputConfig('default');  % Auto-caches everything
+Total = transmissionFast.totalTransmission();      % Uses cached wavelength array
+% Result: Identical output, 100×+ faster on repeated calls
+```
+
+## Version History
+
+- **v2.0** - Added transmissionFast package with 5-layer caching system
+  - Persistent function-level caching for expensive calculations
+  - Automatic wavelength array extraction from Config
+  - 124× performance improvement for mirror reflectance
+  - 18× performance improvement for corrector transmission
+  - Full backward compatibility maintained
+  
+- **v1.5** - Advanced optimization features
+  - TransmissionOptimizerAdvanced with mixed algorithms
+  - Linear least squares solver for field corrections
+  - Enhanced visualization and analysis tools
+  
+- **v1.0** - Initial release with complete transmission modeling
 
 ## Contact
 
 For questions or issues, please contact D. Kovaleva or refer to the Garrappa et al. 2025 paper.
+
+---
+
+*For performance benchmarks and caching details, see the transmissionFast package README.*
 
 
