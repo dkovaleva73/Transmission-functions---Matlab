@@ -1,0 +1,96 @@
+function Field_corr = fieldCorrection(X_coord, Y_coord, Config, Args)
+    % Calculate field-dependent corrections using Chebyshev polynomials
+    % Input  : - X_coord (double array): X coordinates of sources (pixels)
+    %          - Y_coord (double array): Y coordinates of sources (pixels)
+    %          - Config (struct): Configuration from inputConfig containing:
+    %            Config.FieldCorrection.Python.{kx0, ky0, kx, ky, kx2, ky2, kx3, ky3, kx4, ky4, kxy}
+    %            Config.Instrumental.Detector.{Min_coordinate, Max_coordinate}
+    %          - Args (optional): Additional arguments
+    %            'Enable' (logical): Enable corrections (default: true)
+    % Output : - Field_corr (double array): Field corrections (magnitude units)
+    % Author : D. Kovaleva (Jul 2025)
+    % Reference : Garrappa et al. 2025, A&A 699, A50.
+    % Example: % With Config
+    %          Config = transmission.inputConfig();
+    %          Config.FieldCorrection.Python.kx0 = 0.1;
+    %          Config.FieldCorrection.Python.kx = 0.02;
+    %          % ... set other parameters
+    %          fc = transmission.instrumental.fieldCorrection([100, 863], [100, 863], Config);
+    
+    arguments
+        X_coord 
+        Y_coord 
+        Config 
+        Args.Enable logical = true
+    end
+    
+    % Check if corrections are enabled
+    if ~Args.Enable
+        Field_corr = zeros(size(X_coord));
+        return;
+    end
+    
+    % Use field correction parameters directly from Config
+    if ~isfield(Config, 'FieldCorrection')
+        Field_corr = zeros(size(X_coord));
+        return;
+    end
+    
+    FieldParams = Config.FieldCorrection;
+    
+    % Normalize coordinates to [-1, 1] range using detector dimensions from Config
+    min_coor = Config.Instrumental.Detector.Min_coordinate;
+    max_coor = Config.Instrumental.Detector.Max_coordinate;
+    lower_bound = Config.Instrumental.Detector.Target_min;
+    upper_bound = Config.Instrumental.Detector.Target_max;
+    
+    Xcoor_ = transmission.utils.rescaleInputData(X_coord, min_coor, max_coor, lower_bound, upper_bound);
+    Ycoor_ = transmission.utils.rescaleInputData(Y_coord, min_coor, max_coor, lower_bound, upper_bound);
+    
+    % Use Config.FieldCorrection for calculations
+    % The Config already contains all the Chebyshev configuration we need
+    
+    % Calculate Chebyshev polynomials for X using Config
+    ConfigCheb = Config;
+    ConfigCheb.Utils.ChebyshevModel.Default_mode = 'zp';
+    ConfigCheb.Utils.RescaleInputData.Target_min = -1;
+    ConfigCheb.Utils.RescaleInputData.Target_max = 1;
+    
+    % Get parameter values with defaults from FieldParams
+    kx0 = getFieldValue(FieldParams, 'kx0', 0.0);
+    ky0 = getFieldValue(FieldParams, 'ky0', 0.0);
+    kx = getFieldValue(FieldParams, 'kx', 0.0);
+    ky = getFieldValue(FieldParams, 'ky', 0.0);
+    kx2 = getFieldValue(FieldParams, 'kx2', 0.0);
+    ky2 = getFieldValue(FieldParams, 'ky2', 0.0);
+    kx3 = getFieldValue(FieldParams, 'kx3', 0.0);
+    ky3 = getFieldValue(FieldParams, 'ky3', 0.0);
+    kx4 = getFieldValue(FieldParams, 'kx4', 0.0);
+    ky4 = getFieldValue(FieldParams, 'ky4', 0.0);
+    kxy = getFieldValue(FieldParams, 'kxy', 0.0);
+    
+    % Calculate Chebyshev for X
+    ConfigCheb.Utils.ChebyshevModel.Default_coeffs = [0., kx, kx2, kx3, kx4];
+    Cheb_x_val = transmission.utils.chebyshevModel(Xcoor_, ConfigCheb);
+    
+    % Calculate Chebyshev for Y
+    ConfigCheb.Utils.ChebyshevModel.Default_coeffs = [0., ky, ky2, ky3, ky4];
+    Cheb_y_val = transmission.utils.chebyshevModel(Ycoor_, ConfigCheb);
+    
+    % Calculate cross-term (order 1)
+    ConfigCheb.Utils.ChebyshevModel.Default_coeffs = [0., kxy];
+    Cheb_xy_x = transmission.utils.chebyshevModel(Xcoor_, ConfigCheb);
+    Cheb_xy_y = transmission.utils.chebyshevModel(Ycoor_, ConfigCheb);
+    
+    % Calculate total field correction 
+    Field_corr = Cheb_x_val + Cheb_y_val + kx0 + ky0 + Cheb_xy_x .* Cheb_xy_y;
+end
+
+function value = getFieldValue(structure, fieldname, defaultValue)
+    % Safe field extraction with default value
+    if isfield(structure, fieldname)
+        value = structure.(fieldname);
+    else
+        value = defaultValue;
+    end
+end

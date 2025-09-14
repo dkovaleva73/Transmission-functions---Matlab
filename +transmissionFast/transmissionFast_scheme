@@ -1,0 +1,43 @@
+# transmissionFast Package
+```
++transmissionFast/
+├── totalTransmission.m                 % Total transmission 
+├── inputConfig.m                       % Configuration management with caching
+├── calculateAbsolutePhotometry.m       % Absolute photometry calculations
+├── calculateCostFunction.m             % Cost function for optimization
+├── calibratorWorkflow.m                % Calibrator processing pipeline (demo)
+├── TransmissionOptimizer.m             % Multi-stage optimization controller (legacy)
+├── TransmissionOptimizerAdvanced.m     % Advanced optimizer with mixed algorithms
+├── minimizerFminGeneric.m              % Nonlinear optimization - fminsearch
+├── minimizerLinearLeastSquares.m       % Linear least squares solver
+├── +atmospheric/
+│   ├── atmosphericTransmission.m       % Total atmospheric transmission (demo)
+│   ├── rayleighTransmission.m          % Rayleigh scattering
+│   ├── aerosolTransmission.m           % Aerosol extinction
+│   ├── ozoneTransmission.m             % Ozone absorption
+│   ├── waterTransmittance.m            % Water vapor absorption
+│   └── umgTransmittance.m              % Uniformly Mixed Gas transmission
+├── +instrumental/
+│   ├── otaTransmission.m               % Complete OTA transmission (demo)
+│   ├── quantumEfficiency.m             % CCD quantum efficiency
+│   ├── mirrorReflectance.m             % Mirror reflectivity with persistent cache
+│   ├── correctorTransmission.m         % Corrector transmission with persistent cache
+│   └── fieldCorrection.m               % Field-dependent corrections
+├── +calibrators/
+│   ├── applyTransmissionToCalibrators.m     % Apply transmission to Gaia spectra
+│   └── calculateTotalFluxCalibrators.m      % Calculate total flux in photons
+├── +data/
+│   ├── findCalibratorsWithCoords.m     % Find Gaia calibrators around LAST sources (legacy)
+│   ├── findCalibratorsForAstroImage.m  % Find calibrators for AstroImage fields (catsHTM.coneSearch)
+│   └── loadAbsorptionData.m            % Load molecular absorption data
+└── +utils/
+    ├── makeWavelengthArray.m           % Wavelength array 
+    ├── skewedGaussianModel.m           % Skewed Gaussian model
+    ├── legendreModel.m                 % Legendre polynomial model
+    ├── chebyshevModel.m                % Chebyshev polynomial model
+    ├── linearFieldCorrection.m         % Linear field correction model
+    ├── evaluateChebyshevPolynomial.m   % Chebyshev polynomial evaluation
+    ├── rescaleInputData.m              % Data rescaling utilities
+    ├── airmassFromSMARTS.m             % Airmass calculation - SMARTS with persistent cache
+    └── sigmaClip.m                     % Sigma clipping for outliers
+```

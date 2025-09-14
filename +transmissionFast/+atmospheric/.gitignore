@@ -1,0 +1,17 @@
+﻿# Ignore MATLAB autosave files
+*.asv
+
+# Ignore data outputs
+#*.mat
+#*.csv
+
+# Ignore temporary files
+#*.log
+#*.tmp
+
+# Ignore folders
+old/
+
+# Ignore everything in /results/ but keep .md summary
+#results/*
+#!results/summary.md
