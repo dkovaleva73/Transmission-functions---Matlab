@@ -2,6 +2,7 @@ function [finalParams_all, calibratorResults_all, finalParams_table] = optimizeA
     % Optimize transmission parameters for all 24 fields in AstroImage
     % Uses cached data from field 1 for fields 2-24 to improve performance
     % Input (optional):
+    %   'Config' - Configuration structure (default: inputConfig('default', true))
     %   'Nfields' - Number of fields to process (default: 24)
     %   'Sequence' - Optimization sequence name (default: 'Advanced')
     %   'Verbose' - Show detailed output (default: false)
@@ -14,10 +15,13 @@ function [finalParams_all, calibratorResults_all, finalParams_table] = optimizeA
     % Example:
     %   [params, calibs, table] = transmissionFast.optimizeAllFieldsAI();
     %   [params, ~, table] = transmissionFast.optimizeAllFieldsAI('Nfields', 5, 'Verbose', true);
+    %   Config = inputConfig(); Config.Data.LAST_AstroImage_file = 'myfile.mat';
+    %   [params, ~, table] = transmissionFast.optimizeAllFieldsAI('Config', Config);
     %
     % Author: D. Kovaleva (Sep 2025)
     
     arguments
+        Args.Config = []
         Args.Nfields (1,1) double {mustBePositive, mustBeInteger} = 24
         Args.Sequence string = "Advanced"
         Args.Verbose (1,1) logical = false
@@ -29,7 +33,11 @@ function [finalParams_all, calibratorResults_all, finalParams_table] = optimizeA
     startTime = datetime('now');
     
     % Load configuration once
-    Config = transmissionFast.inputConfig('default', true);
+    if isempty(Args.Config)
+        Config = transmissionFast.inputConfig('default', true);
+    else
+        Config = Args.Config;
+    end
     
     % Initialize storage
     finalParams_all = cell(Args.Nfields, 1);
