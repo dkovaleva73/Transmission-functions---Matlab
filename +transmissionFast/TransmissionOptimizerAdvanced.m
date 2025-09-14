@@ -13,6 +13,7 @@ classdef TransmissionOptimizerAdvanced < handle
     %           optimizer = transmissionFast.TransmissionOptimizerAdvanced(Config);
     %           optimizer.setMinimizerForStage(3, 'linear');  % Use linear solver for field corrections
     %           finalParams = optimizer.runFullSequence();
+    %           calibrators = optimizer.getCalibratorResults; % optimized fluxes for calibrators    
     
     properties (Access = public)
         Config                   % Configuration structure

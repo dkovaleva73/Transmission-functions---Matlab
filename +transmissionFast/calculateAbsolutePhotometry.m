@@ -292,9 +292,9 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
                            getFieldValue(PythonParams, 'kx3', 0), getFieldValue(PythonParams, 'kx4', 0)];
                 % Calculate Chebyshev expansion using individual polynomials
                 Cheb_x_val = 0;
-                for i = 1:length(kx_coeffs)
-                    if kx_coeffs(i) ~= 0
-                        Cheb_x_val = Cheb_x_val + kx_coeffs(i) * transmissionFast.utils.evaluateChebyshevPolynomial(X_norm, i-1);
+                for j = 1:length(kx_coeffs)
+                    if kx_coeffs(j) ~= 0
+                        Cheb_x_val = Cheb_x_val + kx_coeffs(j) * transmissionFast.utils.evaluateChebyshevPolynomial(X_norm, j-1);
                     end
                 end
              %   Cheb_x_val = evaluateChebyshevDirect(X_norm, [0, -0.0024413998425085737, -0.0007724793006609332, -0.001278415563733759, 0.0015160592703367115]);
@@ -304,9 +304,9 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
                            getFieldValue(PythonParams, 'ky3', 0), getFieldValue(PythonParams, 'ky4', 0)];
                 % Calculate Chebyshev expansion using individual polynomials
                 Cheb_y_val = 0;
-                for i = 1:length(ky_coeffs)
-                    if ky_coeffs(i) ~= 0
-                        Cheb_y_val = Cheb_y_val + ky_coeffs(i) * transmissionFast.utils.evaluateChebyshevPolynomial(Y_norm, i-1);
+                for j = 1:length(ky_coeffs)
+                    if ky_coeffs(j) ~= 0
+                        Cheb_y_val = Cheb_y_val + ky_coeffs(j) * transmissionFast.utils.evaluateChebyshevPolynomial(Y_norm, j-1);
                     end
                 end
              %   Cheb_y_val = evaluateChebyshevDirect(Y_norm, [0, -0.0014053779943274947, 0.0011508991911419741, -0.00020214313691013786, -0.0011522339536700343]);
