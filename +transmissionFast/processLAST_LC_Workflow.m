@@ -17,6 +17,7 @@ function Results = processLAST_LC_Workflow(Args)
     %     .Timestamps - Extracted timestamps from filenames
     %     .OptimizedParams - Cell array of optimization results for each file
     %     .CalibratedCatalogs - Cell array of photometry catalogs for each file
+    %     .CalibratorResults - Cell array of calibrator data for each file
     %     .ProcessingTimes - Time taken for each file
     %     .Success - Boolean array indicating success for each file
     %
@@ -30,7 +31,7 @@ function Results = processLAST_LC_Workflow(Args)
         Args.OutputDir string = ""
         Args.FilePattern string = "LAST.*.mat"
         Args.MaxFiles double = Inf
-        Args.Sequence string = "Advanced"
+        Args.Sequence string = "Advanced" %"AtmosphericOnly"  "Standard" 
         Args.Verbose logical = true
         Args.SaveIntermediateResults logical = true
     end
@@ -105,6 +106,7 @@ function Results = processLAST_LC_Workflow(Args)
     Results.Timestamps = sortedTimestamps;
     Results.OptimizedParams = cell(numFiles, 1);
     Results.CalibratedCatalogs = cell(numFiles, 1);
+    Results.CalibratorResults = cell(numFiles, 1);  % Store calibrator data for each file
     Results.ProcessingTimes = zeros(numFiles, 1);
     Results.Success = false(numFiles, 1);
     Results.NumStarsPerField = zeros(numFiles, 24);  % 24 fields per AstroImage
@@ -143,7 +145,7 @@ function Results = processLAST_LC_Workflow(Args)
             end
             
             % Create optimizer
-            optimizer = transmissionFast.TransmissionOptimizerAdvanced(Config, ...
+            optimizer = transmissionFast.TransmissionOptimizerAdvanced(Config, ...   %!!!
                 'Sequence', Args.Sequence, ...
                 'SigmaClippingEnabled', true, ...
                 'Verbose', false);  % Suppress individual optimizer output
@@ -158,6 +160,7 @@ function Results = processLAST_LC_Workflow(Args)
             
             % Store optimization results
             Results.OptimizedParams{fileIdx} = finalParams_all;
+            Results.CalibratorResults{fileIdx} = calibratorResults_all;
             
             % Count successful optimizations
             successfulFields = sum(~cellfun(@isempty, finalParams_all));
@@ -173,7 +176,7 @@ function Results = processLAST_LC_Workflow(Args)
                 end
                 
                 % Run absolute photometry with field-specific parameters
-                CatalogAB_all = transmissionFast.AbsolutePhotometryAstroImage(...
+                CatalogAB_all = transmissionFast.absolutePhotometryForAstroImage(...
                     finalParams_all, Config, ...
                     'Verbose', false, ...
                     'SaveResults', false);

@@ -1,8 +1,10 @@
-function [Spec, Mag, Coords, LASTData, Metadata] = findCalibratorsForAstroImage(AIFile, SearchRadius, Num)
+function [Spec, Mag, Coords, LASTData, Metadata] = findCalibratorsForAstroImage(AIFile, SearchRadius, Num, Args)
     % Find Gaia sources with low-resolution spectra around LAST source positions
     % Input :  - AIFile - Path to LAST AstroImage
     %          - SearchRadius - Search radius in arcsec (default: 1)
     %          - Num - number of the Field in AstroImage [1:24]
+    %          - Args - Optional arguments:
+    %            'Verbose' - Enable verbose output (default: true)
     % Output:  - Spec - Cell array {N x 2} with:
     %             - Column 1: Flux values (343 wavelength points)
     %             - Column 2: Flux error values (343 wavelength points)
@@ -34,6 +36,7 @@ function [Spec, Mag, Coords, LASTData, Metadata] = findCalibratorsForAstroImage(
     %    AIFile = "/home/dana/matlab/data/transmission_fitter/LASTfiles/Coadd.mat"
         SearchRadius = transmissionFast.inputConfig().Data.Search_radius_arcsec
         Num = 1 % number of the field in the AstroImage, Integer [1:24]
+        Args.Verbose logical = true
     end
 
       FluxIni = 7 ;    % 7 to 349: number of fields for flux values in GAIADR3spec 
@@ -42,7 +45,8 @@ function [Spec, Mag, Coords, LASTData, Metadata] = findCalibratorsForAstroImage(
       EFluxEnd = 692;    
       Npoint = 343;
       FlagMatchGaia = 1;
-      MagFilterPSF = 16.0; % sources with MAG_PSF > MagFilterPSF are considered too faint for having sampled Gaia spectra
+      MagFilterPSFfaint = 16.0;
+      MagFilterPSFbright = 12.0;
       MinSN = 5;     % Minimum and maximum LAST SN for calibrators
       MaxSN = 1000;
  tic
@@ -62,7 +66,7 @@ function [Spec, Mag, Coords, LASTData, Metadata] = findCalibratorsForAstroImage(
     % Filter: Remove sources with MAG_PSF > 16.0 (too faint for having sampled Gaia spectra)
     magFilterMask = true(height(Tab), 1);
     if ismember('MAG_PSF', Tab.Properties.VariableNames)
-        magFilterMask = Tab.MAG_PSF < MagFilterPSF;  % Keep sources with MAG_PSF < 16.0
+        magFilterMask = (Tab.MAG_PSF > MagFilterPSFbright) & (Tab.MAG_PSF < MagFilterPSFfaint);  % Keep sources with 12.0 < MAG_PSF < 16.0
     end
     
     Tab = Tab(magFilterMask, :);
@@ -209,8 +213,10 @@ function [Spec, Mag, Coords, LASTData, Metadata] = findCalibratorsForAstroImage(
     end
     
     % Display summary
-    fprintf('Found %d LAST sources with Gaia spectra matches\n', matchCount);
-    fprintf('Search radius: %.1f arcsec\n', SearchRadius);
+    if Args.Verbose
+        fprintf('Found %d LAST sources with Gaia spectra matches\n', matchCount);
+        fprintf('Search radius: %.1f arcsec\n', SearchRadius);
+    end
     
     % Optional: Show coordinate differences
 %    if ~isempty(Coords)

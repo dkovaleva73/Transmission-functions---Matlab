@@ -2,14 +2,16 @@
 ```
 +transmissionFast/
 ├── totalTransmission.m                 % Total transmission 
-├── inputConfig.m                       % Configuration management with caching
-├── calculateAbsolutePhotometry.m       % Absolute photometry calculations
+├── inputConfig.m                       % Configuration management 
+├── calculateAbsolutePhotometry.m       % Absolute photometry calculations 
 ├── calculateCostFunction.m             % Cost function for optimization
 ├── calibratorWorkflow.m                % Calibrator processing pipeline (demo)
+├── optimizeAllFieldsAI.m               % Wrapper for TransmissionOptimizerAdvanced workflow
 ├── TransmissionOptimizer.m             % Multi-stage optimization controller (legacy)
-├── TransmissionOptimizerAdvanced.m     % Advanced optimizer with mixed algorithms
+├── TransmissionOptimizerAdvanced.m     % Optimization controller with mixed algorithms
 ├── minimizerFminGeneric.m              % Nonlinear optimization - fminsearch
 ├── minimizerLinearLeastSquares.m       % Linear least squares solver
+├── compileLightCurves.m                % _Under development
 ├── +atmospheric/
 │   ├── atmosphericTransmission.m       % Total atmospheric transmission (demo)
 │   ├── rayleighTransmission.m          % Rayleigh scattering
@@ -36,8 +38,14 @@
     ├── legendreModel.m                 % Legendre polynomial model
     ├── chebyshevModel.m                % Chebyshev polynomial model
     ├── linearFieldCorrection.m         % Linear field correction model
-    ├── evaluateChebyshevPolynomial.m   % Chebyshev polynomial evaluation
     ├── rescaleInputData.m              % Data rescaling utilities
     ├── airmassFromSMARTS.m             % Airmass calculation - SMARTS with persistent cache
     └── sigmaClip.m                     % Sigma clipping for outliers
 ```
+
+DATA:
+
+Molecular absorption: 21 files ~10 kB each (tens to hundreds of lines)
+Instrumental transmission: 12 files 10 to 100 kB each (presently used 2)
+
+

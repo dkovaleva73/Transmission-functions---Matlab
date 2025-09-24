@@ -27,7 +27,7 @@ function [SpecTrans, Wavelength, TransFunc] = applyTransmissionToCalibrators(Spe
     arguments
         Spec = []
         Metadata = []
-        Config   = transmissionFast.inputConfig()
+        Config = transmissionFast.inputConfig()
         Args.AbsorptionData = []  % Optional pre-loaded absorption data
         Args.ZeroPointMode logical = false  % If true: use Fnu flat spectrum
     end

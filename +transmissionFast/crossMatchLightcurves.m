@@ -11,12 +11,13 @@ function [MatchedSources, LightcurveTable] = crossMatchLightcurves(Results, Args
     %     'MinDetections' - Minimum detections required (default: all files)
     %     'RAColumn' - RA column name (default: 'RA')
     %     'DecColumn' - Dec column name (default: 'Dec')
-    %     'MagColumn' - Magnitude column name (default: 'MAG_PSF_AB')
+    %     'MagColumn' - Magnitude column name (default: 'MAG_APER3_AB')
+    %     'RawMagColumn' - Non-calibrated magnitude column (default: 'MAG_APER3')
     %     'Verbose' - Show progress (default: true)
     %
     % Output:
     %   MatchedSources - Table with cross-matched source information
-    %   LightcurveTable - Table with lightcurve data (JD, MAG_PSF_AB, source_id)
+    %   LightcurveTable - Table with lightcurve data (JD, MAG_APER3_AB, MAG_APER3, source_id)
     %
     % Author: D. Kovaleva (Sep 2025)
     % Example:
@@ -30,7 +31,8 @@ function [MatchedSources, LightcurveTable] = crossMatchLightcurves(Results, Args
         Args.MinDetections double = []   % Default: all files
         Args.RAColumn string = "RA"
         Args.DecColumn string = "Dec" 
-        Args.MagColumn string = "MAG_PSF_AB"
+        Args.MagColumn string = "MAG_APER3_AB"
+        Args.RawMagColumn string = "MAG_APER_3"
         Args.Verbose logical = true
     end
     
@@ -39,7 +41,14 @@ function [MatchedSources, LightcurveTable] = crossMatchLightcurves(Results, Args
     end
     
     % Get successful catalogs only
-    validCatalogs = ~cellfun(@isempty, Results.CalibratedCatalogs);
+    % Each CalibratedCatalogs{fileIdx} should be a cell array of 24 subimages
+    validCatalogs = false(length(Results.CalibratedCatalogs), 1);
+    for idx = 1:length(Results.CalibratedCatalogs)
+        if ~isempty(Results.CalibratedCatalogs{idx}) && iscell(Results.CalibratedCatalogs{idx})
+            % Check if any subimage has data
+            validCatalogs(idx) = any(~cellfun(@isempty, Results.CalibratedCatalogs{idx}));
+        end
+    end
     numValidFiles = sum(validCatalogs);
     
     if numValidFiles < 2
@@ -103,7 +112,8 @@ function [MatchedSources, LightcurveTable] = crossMatchLightcurves(Results, Args
                 % Check required columns exist
                 if ~ismember(Args.RAColumn, catalog.Properties.VariableNames) || ...
                    ~ismember(Args.DecColumn, catalog.Properties.VariableNames) || ...
-                   ~ismember(Args.MagColumn, catalog.Properties.VariableNames)
+                   ~ismember(Args.MagColumn, catalog.Properties.VariableNames) || ...
+                   ~ismember(Args.RawMagColumn, catalog.Properties.VariableNames)
                     continue;
                 end
                 
@@ -217,7 +227,8 @@ function [MatchedSources, LightcurveTable] = crossMatchLightcurves(Results, Args
     LightcurveTable = table();
     LightcurveTable.SourceID = zeros(totalPoints, 1);
     LightcurveTable.JD = zeros(totalPoints, 1);
-    LightcurveTable.MAG_PSF_AB = zeros(totalPoints, 1);
+    LightcurveTable.MAG_APER3_AB = zeros(totalPoints, 1);
+    LightcurveTable.MAG_APER3 = zeros(totalPoints, 1);  % Non-calibrated magnitude
     LightcurveTable.RA = zeros(totalPoints, 1);
     LightcurveTable.Dec = zeros(totalPoints, 1);
     LightcurveTable.FileIndex = zeros(totalPoints, 1);
@@ -236,6 +247,7 @@ function [MatchedSources, LightcurveTable] = crossMatchLightcurves(Results, Args
         sourceRA = AllSources.(Args.RAColumn)(indices);
         sourceDec = AllSources.(Args.DecColumn)(indices);
         sourceMag = AllSources.(Args.MagColumn)(indices);
+        sourceRawMag = AllSources.(Args.RawMagColumn)(indices);
         sourceJD = AllSources.ObsJD(indices);
         
         % Remove NaN magnitudes
@@ -258,7 +270,8 @@ function [MatchedSources, LightcurveTable] = crossMatchLightcurves(Results, Args
         
         LightcurveTable.SourceID(lightcurveIdx:endIdx) = srcIdx;
         LightcurveTable.JD(lightcurveIdx:endIdx) = sourceJD;
-        LightcurveTable.MAG_PSF_AB(lightcurveIdx:endIdx) = sourceMag;
+        LightcurveTable.MAG_APER3_AB(lightcurveIdx:endIdx) = sourceMag;
+        LightcurveTable.MAG_APER3(lightcurveIdx:endIdx) = sourceRawMag;
         LightcurveTable.RA(lightcurveIdx:endIdx) = sourceRA;
         LightcurveTable.Dec(lightcurveIdx:endIdx) = sourceDec;
         LightcurveTable.FileIndex(lightcurveIdx:endIdx) = AllSources.FileIndex(indices);

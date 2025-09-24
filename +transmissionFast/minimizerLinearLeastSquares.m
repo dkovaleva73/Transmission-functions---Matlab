@@ -7,7 +7,7 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerLinearLe
     %           'FixedParams' - Structure with fixed parameter values (overrides Config)
     %           'InitialValues' - Structure with initial values (ignored for linear solver)
     %           'SigmaClipping' - Enable sigma clipping (default: false)
-    %           'SigmaThreshold' - Threshold for sigma clipping (default: 3.0)
+    %           'SigmaThreshold' - Threshold for sigma clipping (default: 2.0)
     %           'SigmaIterations' - Number of sigma clipping iterations (default: 3)
     %           'InputData' - Pre-loaded calibrator data (optional)
     %           'Verbose' - Enable verbose output (default: false)
@@ -25,11 +25,11 @@ function [OptimalParams, Fval, ExitFlag, Output, ResultData] = minimizerLinearLe
     
     arguments
         Config = transmissionFast.inputConfig()
-        Args.FreeParams string = ["kx0", "kx", "ky"]  % Default: basic field correction
+        Args.FreeParams string = ["kx0", "kx", "ky", "kx2", "ky2", "kx3", "ky3", "kx4", "ky4", "kxy"]  % Default: basic field correction
         Args.FixedParams struct = struct()
         Args.InitialValues struct = struct()  % Ignored for linear solver
         Args.SigmaClipping logical = false
-        Args.SigmaThreshold double = 3.0
+        Args.SigmaThreshold double = 2.0
         Args.SigmaIterations double = 3
         Args.UsePythonFieldModel logical = true  % Always use Python-like Chebyshev field model for field corrections
         Args.UseChebyshev logical = false  % Not used in linear solver

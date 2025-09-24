@@ -28,7 +28,7 @@ function [Cost, Residuals, DiffMag] = calculateCostFunction(CalibData, Config, A
     arguments
         CalibData struct
         Config = transmissionFast.inputConfig()
-        Args.UsePythonFieldModel logical = false
+        Args.UsePythonFieldModel logical = true
         Args.UseChebyshev logical = false
         Args.ChebyshevOrder double = 4
     end
@@ -55,9 +55,12 @@ function [Cost, Residuals, DiffMag] = calculateCostFunction(CalibData, Config, A
     end
     
     % Apply transmission to calibrators
-    [SpecTrans, Wavelength, ~] = transmissionFast.calibrators.applyTransmissionToCalibrators(...
-        CalibData.Spec, CalibData.Metadata, Config, 'AbsorptionData', AbsorptionData);
-    
+    [SpecTrans, Wavelength, ~] = transmissionFast.calibrators.applyTransmissionToCalibrators(CalibData.Spec, CalibData.Metadata, Config, 'AbsorptionData', AbsorptionData);
+  %   SpecTrans = evalin('base', 'SpecTrans');
+  %   Wavelength = evalin('base', 'Wavelength');
+  %   Metadata = evalin('base', 'Metadata');
+  %   LASTData = evalin('base', 'LASTData');
+
     % Convert to flux array
     if iscell(SpecTrans)
         TransmittedFluxArray = cell2mat(cellfun(@(x) x(:)', SpecTrans(:,1), 'UniformOutput', false));
@@ -69,12 +72,19 @@ function [Cost, Residuals, DiffMag] = calculateCostFunction(CalibData, Config, A
     TotalFlux = transmissionFast.calibrators.calculateTotalFluxCalibrators(...
         Wavelength, TransmittedFluxArray, CalibData.Metadata, ...
         'Norm_', Config.General.Norm_);
+ %    TotalFlux = transmissionFast.calibrators.calculateTotalFluxCalibrators(...
+ %       Wavelength, TransmittedFluxArray, Metadata, ...
+ %       'Norm_', Config.General.Norm_);
     
     % Apply field corrections if provided
     if UsePythonModel
         % Apply Python-like Chebyshev field correction model using fieldCorrection
         FieldCorrectionMag = transmissionFast.instrumental.fieldCorrection(...
             CalibData.LASTData.X, CalibData.LASTData.Y, Config);
+
+   %   FieldCorrectionMag = transmissionFast.instrumental.fieldCorrection(...
+   %         LASTData.X, LASTData.Y, Config);
+    
         % Field correction is already in magnitude units, add directly to DiffMag
     elseif ~isempty(ChebyshevModel)
         % Apply basic Chebyshev model
@@ -87,6 +97,7 @@ function [Cost, Residuals, DiffMag] = calculateCostFunction(CalibData, Config, A
     
     % Calculate magnitude differences
     DiffMag = 2.5 * log10(TotalFlux ./ CalibData.LASTData.FLUX_APER_3);
+    %DiffMag = 2.5 * log10(TotalFlux ./ LASTData.FLUX_APER_3);
     
     % Add field correction if using Python model (magnitude units)
     if UsePythonModel

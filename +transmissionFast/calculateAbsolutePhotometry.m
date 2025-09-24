@@ -16,7 +16,7 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
     % Author: D. Kovaleva (Aug 2025)
     % Example:
     %   Config = transmissionFast.inputConfig();
-    %   optimizer = transmissionFast.TransmissionOptimizer(Config);
+    %   optimizer = transmissionFast.TransmissionOptimizerAdvanced(Config);
     %   finalParams = optimizer.runFullSequence();
     %   CatalogAB = transmissionFast.calculateAbsolutePhotometry(finalParams, Config);
     
@@ -54,13 +54,14 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
     else        
         AI = io.files.load2(AstroImageFile);
     end
-
+    
+    imageNum = Args.ImageNum;
     %Load AstroCatalog
-%       AC = AstroCatalog(AstroCatFile);
+       AC = AstroCatalog(AstroCatFile);  %!!!!!!!!!!!!!
        
 
     % Get the catalog for specified image
-    AC = AI(Args.ImageNum).CatData;
+%    AC = AI(imageNum).CatData;         !!!!!!!!!!!!!!
     
     % Extract LAST catalog data as a MATLAB table
     % Check what format the data is in
@@ -97,65 +98,66 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
     end
     
     % Extract metadata from header
-    Header = AI(Args.ImageNum).HeaderData;
-    Metadata = struct();
+ %   Header = AI(imageNum).HeaderData; !!!!!!!
+ %   Header = AC.HeaderData;
+ %   Metadata = struct();
     
-    try
-        Metadata.ExpTime = Header.getVal('EXPTIME');
-    catch
-        Metadata.ExpTime = NaN;
-    end
+ %   try
+ %       Metadata.ExpTime = Header.getVal('EXPTIME');
+ %   catch
+ %       Metadata.ExpTime = NaN;
+ %   end
     
-    try
-        Metadata.JD = Header.getVal('JD');
-    catch
-        Metadata.JD = NaN;
-    end
+ %   try
+ %       Metadata.JD = Header.getVal('JD');
+ %   catch
+ %       Metadata.JD = NaN;
+ %   end
     
-    try
-        Metadata.airMassFromLAST = Header.getVal('AIRMASS');
-    catch
-        Metadata.airMassFromLAST = NaN;
-    end
+ %   try
+ %       Metadata.airMassFromLAST = Header.getVal('AIRMASS');
+ %   catch
+ %       Metadata.airMassFromLAST = NaN;
+ %   end
     
-    try
-        Metadata.Temperature = Header.getVal('MNTTEMP');
-    catch
-        Metadata.Temperature = NaN;
-    end
+ %   try
+ %       Metadata.Temperature = Header.getVal('MNTTEMP');
+ %   catch
+ %       Metadata.Temperature = NaN;
+ %   end
     
-    try
-        Metadata.Pressure = Header.getVal('PRESSURE');
-    catch
-        try
-            Metadata.Pressure = Header.getVal('PRESS');
-        catch
-            Metadata.Pressure = NaN;
-        end
-    end
+ %   try
+ %       Metadata.Pressure = Header.getVal('PRESSURE');
+ %   catch
+ %       try
+ %           Metadata.Pressure = Header.getVal('PRESS');
+ %       catch
+ %           Metadata.Pressure = NaN;
+ %       end
+ %   end
     
-    if Args.Verbose
-        fprintf('Catalog contains %d stars\n', height(LASTData));
-        fprintf('Metadata: AirMass=%.3f, Temp=%.1f°C, ExpTime=%.1fs\n\n', ...
-                Metadata.airMassFromLAST, Metadata.Temperature, Metadata.ExpTime);
-    end
+ %   if Args.Verbose
+ %       fprintf('Catalog contains %d stars\n', height(LASTData));
+ %       fprintf('Metadata: AirMass=%.3f, Temp=%.1f°C, ExpTime=%.1fs\n\n', ...
+ %               Metadata.airMassFromLAST, Metadata.Temperature, Metadata.ExpTime);
+ %   end
     
     % Update Config with optimized parameters
     ConfigOptimized = updateConfigWithOptimizedParams(Config, OptimizedParams);
     
     % Set atmospheric parameters from metadata
-    if ~isnan(Metadata.airMassFromLAST)
-        ZenithAngle = acosd(1/Metadata.airMassFromLAST);
-        ConfigOptimized.Atmospheric.Zenith_angle_deg = ZenithAngle;
-    end
+ %   if ~isnan(Metadata.airMassFromLAST)
+ %       ZenithAngle = acosd(1/Metadata.airMassFromLAST);
+ %       ConfigOptimized.Atmospheric.Zenith_angle_deg = ZenithAngle;
+ %   end
     
-    if ~isnan(Metadata.Temperature)
-        ConfigOptimized.Atmospheric.Temperature_C = Metadata.Temperature;
-    end
+ %   if ~isnan(Metadata.Temperature)
+ %       ConfigOptimized.Atmospheric.Temperature_C = Metadata.Temperature;
+ %   end
     
-    if ~isnan(Metadata.Pressure)
-        ConfigOptimized.Atmospheric.Pressure = Metadata.Pressure;
-    end
+ %   if ~isnan(Metadata.Pressure)
+ %       ConfigOptimized.Atmospheric.Pressure = Metadata.Pressure;
+ %   end
     
     % Preload absorption data
     if Args.Verbose
@@ -247,6 +249,7 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
     Nstars = height(LASTData);
     MAG_ZP = zeros(Nstars, 1);
     MAG_PSF_AB = zeros(Nstars, 1);
+    MAG_APER3_AB = zeros(Nstars, 1);
     FIELD_CORRECTION_MAG = zeros(Nstars, 1);  % Store field correction separately
     
     if Args.Verbose
@@ -314,8 +317,8 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
                 % XY cross-term (order 1): Cheb_xy_x and Cheb_xy_y both use [0, kxy]
                 kxy = getFieldValue(PythonParams, 'kxy', 0);
                 % XY cross-term: [0, kxy] means 0*T_0 + kxy*T_1 = kxy*x
-                Cheb_xy_x_val = kxy * transmissionFast.utils.evaluateChebyshevPolynomial(X_norm, 1);
-                Cheb_xy_y_val = kxy * transmissionFast.utils.evaluateChebyshevPolynomial(Y_norm, 1);
+                Cheb_xy_x_val = transmissionFast.utils.evaluateChebyshevPolynomial(X_norm, 1);
+                Cheb_xy_y_val = transmissionFast.utils.evaluateChebyshevPolynomial(Y_norm, 1);       %%%%%?????
           
                 
                 % Constant terms
@@ -324,7 +327,7 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
                 ky0 = getFieldValue(PythonParams, 'ky0', 0);
                 
                 % Python-like Chebyshev field correction formula (line 388)
-                FieldCorrection_mag = Cheb_x_val + Cheb_y_val + kx0 + ky0 + Cheb_xy_x_val * Cheb_xy_y_val;
+                FieldCorrection_mag = Cheb_x_val + Cheb_y_val + kx0 + ky0 + kxy * Cheb_xy_x_val * Cheb_xy_y_val;
                 
             else
                  FieldCorrection_mag = 0;   
@@ -340,44 +343,47 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
         MAG_ZP(i) = ZP_magnitude + FieldCorrection_mag;
         
        
+        % Calculate AB magnitudes for this star using flux-based formula:
+        % MAG_AB = -2.5*log10(FLUX_value/Dt) + MAG_ZP;
+
+        % Handle FLUX_PSF if available
         if ismember('FLUX_PSF', LASTData.Properties.VariableNames)
             FLUX_PSF_value = LASTData.FLUX_PSF(i);
-
-       % Calculate AB magnitude for this star using flux-based formula:
-        % MAG_AB = -2.5*log10(FLUX_PSF_value/Dt) + MAG_ZP;
-           if ~isnan(FLUX_PSF_value) && FLUX_PSF_value > 0
-                % Get exposure time (Dt)
-           %    if ~isnan(Metadata.ExpTime)
-           %         Dt = Metadata.ExpTime;
-           %         Dt = 20.0;
-           %     else
-           %         Dt = 20.0;  % Default exposure time
-           %     end
-                % Calculate AB magnitude from flux
+            if ~isnan(FLUX_PSF_value) && FLUX_PSF_value > 0
                 MAG_PSF_AB(i) = -2.5 * log10(FLUX_PSF_value / Dt) + MAG_ZP(i);
-            else
-                MAG_PSF_AB(i) = NaN;
-            end
-        elseif ismember('MAG_PSF', LASTData.Properties.VariableNames)
-            % Fallback: use instrumental magnitude if flux not available
-            MAG_PSF_value = LASTData.MAG_PSF(i);
-            if ~isnan(MAG_PSF_value)
-                MAG_PSF_AB(i) = MAG_PSF_value + MAG_ZP(i);
             else
                 MAG_PSF_AB(i) = NaN;
             end
         else
             MAG_PSF_AB(i) = NaN;
         end
+
+        % Handle FLUX_APER_3 if available
+        if ismember('FLUX_APER_3', LASTData.Properties.VariableNames)
+            FLUX_APER_3_value = LASTData.FLUX_APER_3(i);
+            if ~isnan(FLUX_APER_3_value) && FLUX_APER_3_value > 0
+                MAG_APER3_AB(i) = -2.5 * log10(FLUX_APER_3_value / Dt) + MAG_ZP(i);
+            else
+                MAG_APER3_AB(i) = NaN;
+            end
+        else
+            MAG_APER3_AB(i) = NaN;
+        end
     end
     
     % Add new columns to the MATLAB table
     LASTData.MAG_ZP = MAG_ZP;
     LASTData.MAG_PSF_AB = MAG_PSF_AB;
+    LASTData.MAG_APER3_AB = MAG_APER3_AB;
     LASTData.FIELD_CORRECTION_MAG = FIELD_CORRECTION_MAG;
     
     % Return the enhanced MATLAB table as output
     CatalogAB = LASTData;
+    
+    % Write result up to AstroImage !!!!! - DOES NOT WORK YET
+ %   AI(imageNum).CatData.insertCol(MAG_ZP, Inf, 'MAG_ZP_AB');
+ %   AI(imageNum).CatData.insertCol(MAG_APER3_AB, Inf, 'MAG_APER3_AB');
+ %   AI(imageNum).CatData.insertCol(MAG_PSF_AB, Inf, 'MAG_PSF_AB');
     
     if Args.Verbose
         fprintf('\n=== PHOTOMETRY CALCULATION COMPLETE ===\n');
@@ -394,7 +400,7 @@ function CatalogAB = calculateAbsolutePhotometry(OptimizedParams, Config, Args)
     if Args.SaveResults
         filename = sprintf('AbsolutePhotometry_%s.mat', ...
                           string(datetime('now', 'Format', 'yyyyMMdd_HHmmss')));
-        save(filename, 'CatalogAB', 'OptimizedParams', 'MAG_ZP', 'MAG_PSF_AB');
+        save(filename, 'CatalogAB', 'OptimizedParams', 'MAG_ZP', 'MAG_APER3_AB', 'MAG_PSF_AB');
         if Args.Verbose
             fprintf('\nResults saved to: %s\n', filename);
         end
@@ -526,34 +532,6 @@ function ConfigOptimized = updateConfigWithOptimizedParams(Config, OptimizedPara
         end
     end
 end
-
-
-%function FieldCorrection = evaluateChebyshevManual(X_norm, Y_norm, cx, cy)
-%    % Manually evaluate Chebyshev polynomials for field correction
-    
-%    % Chebyshev polynomials up to order 4
-%    Tx = zeros(5, 1);
-%    Tx(1) = 1;
-%    Tx(2) = X_norm;
-%    Tx(3) = 2*X_norm^2 - 1;
-%    Tx(4) = 4*X_norm^3 - 3*X_norm;
-%    Tx(5) = 8*X_norm^4 - 8*X_norm^2 + 1;
-    
-%    Ty = zeros(5, 1);
-%    Ty(1) = 1;
-%    Ty(2) = Y_norm;
-%    Ty(3) = 2*Y_norm^2 - 1;
-%    Ty(4) = 4*Y_norm^3 - 3*Y_norm;
-%    Ty(5) = 8*Y_norm^4 - 8*Y_norm^2 + 1;
-    
-    % Combine corrections
-%    CorrectionX = Tx' * cx;
-%    CorrectionY = Ty' * cy;
-    
-    % Field correction in magnitude space (no exponential)
-%    FieldCorrection = CorrectionX + CorrectionY;
-%end
-
 
 function value = getFieldValue(structure, fieldname, defaultValue)
     % Safe field extraction with default value

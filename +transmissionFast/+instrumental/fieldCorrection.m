@@ -50,12 +50,6 @@ function Field_corr = fieldCorrection(X_coord, Y_coord, Config, Args)
     % Use Config.FieldCorrection for calculations
     % The Config already contains all the Chebyshev configuration we need
     
-    % Calculate Chebyshev polynomials for X using Config
-    ConfigCheb = Config;
-    ConfigCheb.Utils.ChebyshevModel.Default_mode = 'zp';
-    ConfigCheb.Utils.RescaleInputData.Target_min = -1;
-    ConfigCheb.Utils.RescaleInputData.Target_max = 1;
-    
     % Get parameter values with defaults from FieldParams
     kx0 = getFieldValue(FieldParams, 'kx0', 0.0);
     ky0 = getFieldValue(FieldParams, 'ky0', 0.0);
@@ -69,21 +63,25 @@ function Field_corr = fieldCorrection(X_coord, Y_coord, Config, Args)
     ky4 = getFieldValue(FieldParams, 'ky4', 0.0);
     kxy = getFieldValue(FieldParams, 'kxy', 0.0);
     
-    % Calculate Chebyshev for X
-    ConfigCheb.Utils.ChebyshevModel.Default_coeffs = [0., kx, kx2, kx3, kx4];
-    Cheb_x_val = transmissionFast.utils.chebyshevModel(Xcoor_, ConfigCheb);
+    % Calculate Chebyshev polynomials directly using evaluateChebyshevPolynomial
+    % X terms: T1(x), T2(x), T3(x), T4(x)
+    Cheb_x_val = kx * transmissionFast.utils.evaluateChebyshevPolynomial(Xcoor_, 1) + ...
+                 kx2 * transmissionFast.utils.evaluateChebyshevPolynomial(Xcoor_, 2) + ...
+                 kx3 * transmissionFast.utils.evaluateChebyshevPolynomial(Xcoor_, 3) + ...
+                 kx4 * transmissionFast.utils.evaluateChebyshevPolynomial(Xcoor_, 4);
+
+    % Y terms: T1(y), T2(y), T3(y), T4(y)
+    Cheb_y_val = ky * transmissionFast.utils.evaluateChebyshevPolynomial(Ycoor_, 1) + ...
+                 ky2 * transmissionFast.utils.evaluateChebyshevPolynomial(Ycoor_, 2) + ...
+                 ky3 * transmissionFast.utils.evaluateChebyshevPolynomial(Ycoor_, 3) + ...
+                 ky4 * transmissionFast.utils.evaluateChebyshevPolynomial(Ycoor_, 4);
+
+    % Cross-term: T1(x) * T1(y)
+    Cheb_xy_x = transmissionFast.utils.evaluateChebyshevPolynomial(Xcoor_, 1);
+    Cheb_xy_y = transmissionFast.utils.evaluateChebyshevPolynomial(Ycoor_, 1);
     
-    % Calculate Chebyshev for Y
-    ConfigCheb.Utils.ChebyshevModel.Default_coeffs = [0., ky, ky2, ky3, ky4];
-    Cheb_y_val = transmissionFast.utils.chebyshevModel(Ycoor_, ConfigCheb);
-    
-    % Calculate cross-term (order 1)
-    ConfigCheb.Utils.ChebyshevModel.Default_coeffs = [0., kxy];
-    Cheb_xy_x = transmissionFast.utils.chebyshevModel(Xcoor_, ConfigCheb);
-    Cheb_xy_y = transmissionFast.utils.chebyshevModel(Ycoor_, ConfigCheb);
-    
-    % Calculate total field correction 
-    Field_corr = Cheb_x_val + Cheb_y_val + kx0 + ky0 + Cheb_xy_x .* Cheb_xy_y;
+    % Calculate total field correction
+    Field_corr = Cheb_x_val + Cheb_y_val + kx0 + ky0 + kxy * (Cheb_xy_x .* Cheb_xy_y);
 end
 
 function value = getFieldValue(structure, fieldname, defaultValue)

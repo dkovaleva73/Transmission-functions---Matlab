@@ -33,7 +33,7 @@ classdef TransmissionOptimizerAdvanced < handle
             
             arguments
                 Config = transmissionFast.inputConfig()
-                Args.Sequence string = ""  % Empty means use Config default
+                Args.Sequence string = "Standard" %"Advanced"  % Empty means use Config default / no field corr: "AtmosphericOnly"
                 Args.SigmaClippingEnabled logical = true
                 Args.Verbose logical = true
                 Args.SaveIntermediateResults logical = false
@@ -143,16 +143,20 @@ classdef TransmissionOptimizerAdvanced < handle
                 
                 % Run the stage with appropriate minimizer
                 stageResult = obj.runSingleStageAdvanced(stage, minimizerType);
-                
+
                 % Store results
                 obj.Results{stageIdx} = stageResult;
-                
+
                 % Update optimized parameters
                 obj.updateOptimizedParams(stageResult.OptimalParams);
+
+                % Update Config with the new parameters for next stage
+                obj.Config = obj.updateConfigWithOptimizedParams(obj.Config, stageResult.OptimalParams);
+
                 disp(stageResult.OptimalParams);
                 if obj.Verbose
                     fprintf('Stage %d completed. Cost: %.4e\n', stageIdx, stageResult.Fval);
-                    
+
                     fprintf('\n');
                 end
             end
@@ -237,13 +241,13 @@ classdef TransmissionOptimizerAdvanced < handle
             % Set verbosity
             Args.Verbose = obj.Verbose;
             
-            % Update Config with all optimized parameters before calling minimizer
-            ConfigForMinimizer = obj.updateConfigWithOptimizedParams(obj.Config, obj.OptimizedParams);
-            
+            % Use the current Config which already has parameters from previous stages
+            ConfigForMinimizer = obj.Config;
+
             % Call appropriate minimizer
             if strcmp(minimizerType, 'linear')
                 % Validate that only field correction parameters are being optimized
-                validFieldParams = ["kx0", "ky0", "kx", "ky", "kx2", "ky2", "kx3", "ky3", "kx4", "ky4", "kxy"];
+                validFieldParams = ["kx0", "kx", "ky", "kx2", "ky2", "kx3", "ky3", "kx4", "ky4", "kxy"];
                 for i = 1:length(stage.freeParams)
                     if ~ismember(stage.freeParams(i), validFieldParams)
                         error('Linear solver can only optimize field correction parameters. Invalid parameter: %s', stage.freeParams(i));
@@ -254,7 +258,7 @@ classdef TransmissionOptimizerAdvanced < handle
                 argCell = obj.structToNameValuePairs(Args);
                 [stageResult.OptimalParams, stageResult.Fval, stageResult.ExitFlag, ...
                  stageResult.Output, stageResult.ResultData] = ...
-                    transmissionFast.minimizerLinearLeastSquares(ConfigForMinimizer, argCell{:});
+                    transmissionFast.minimizerLinearLeastSquares_alt(ConfigForMinimizer, argCell{:});
             else
                 % Use nonlinear solver
                 argCell = obj.structToNameValuePairs(Args);
@@ -282,21 +286,22 @@ classdef TransmissionOptimizerAdvanced < handle
             % Input: fieldNum - Field number (1-24) for AstroImage (optional, default=1)
             
             if nargin < 2
-                fieldNum = 1;  % Default to field 1 if not specified
+                fieldNum = 23;  % Default to field 1 if not specified
             end
             
             if obj.Verbose
                 fprintf('Loading calibrator data for field %d...\n', fieldNum);
             end
             
-           CatalogFile = obj.Config.Data.LAST_AstroImage_file;
-      %      CatalogFile = obj.Config.Data.LAST_catalog_file;
+      %     CatalogFile = obj.Config.Data.LAST_AstroImage_file;
+            CatalogFile = obj.Config.Data.LAST_catalog_file;
             SearchRadius = obj.Config.Data.Search_radius_arcsec;
             
-     %       [Spec, Mag, Coords, LASTData, Metadata] = transmissionFast.data.findCalibratorsWithCoords(...
-     %           CatalogFile, SearchRadius);
-           [Spec, Mag, Coords, LASTData, Metadata] = ...
-               transmissionFast.data.findCalibratorsForAstroImage(CatalogFile, SearchRadius, fieldNum);
+            [Spec, Mag, Coords, LASTData, Metadata] = transmissionFast.data.findCalibratorsWithCoords(...
+                CatalogFile, SearchRadius);
+     %      [Spec, Mag, Coords, LASTData, Metadata] = ...
+     %          transmissionFast.data.findCalibratorsForAstroImage(CatalogFile, SearchRadius, fieldNum, ...
+     %          'Verbose', obj.Verbose);
      
             obj.CalibratorData = struct();
             obj.CalibratorData.Spec = Spec;
@@ -376,11 +381,14 @@ classdef TransmissionOptimizerAdvanced < handle
         
         function CalibratorTable = getCalibratorResults(obj)
             % Get final calibrator results as a MATLAB table
-            % Returns table with all calibrator data and optimization residuals
+            % Returns table with SIGMA-CLIPPED calibrator data and optimization residuals
+            %
+            % IMPORTANT: This method returns ONLY calibrators that survived ALL sigma clipping
+            % stages during the optimization sequence. Outliers removed during any stage are excluded.
             %
             % Output: CalibratorTable - MATLAB table containing:
-            %         - All LAST catalog data for calibrators
-            %         - DIFF_MAG - Final optimization residuals
+            %         - All LAST catalog data for SIGMA-CLIPPED calibrators only
+            %         - DIFF_MAG - Final optimization residuals (recalculated if needed)
             %         - Gaia coordinates and other calibrator-specific data
             %         - MINIMIZER_TYPE - Type of minimizer used in final stage
             
@@ -395,14 +403,54 @@ classdef TransmissionOptimizerAdvanced < handle
                 error('No DiffMag found in optimization results');
             end
             
-            % Extract calibrator data and DiffMag
-            CalibData = finalStageResult.ResultData.CalibData;
+            % Use the CURRENT CalibratorData from optimizer, which has been updated
+            % after sigma clipping (if sigma clipping was applied)
+            % This ensures we return only the calibrators that passed sigma clipping
+            CalibData = obj.CalibratorData;  % Use current (sigma-clipped) data
+            
+            % Get DiffMag from final stage, but verify dimensions match
             DiffMag = finalStageResult.ResultData.DiffMag;
             
             % Create table from calibrator LAST data
             CalibratorTable = CalibData.LASTData;
             
-            % Add DiffMag column
+            % Verify DiffMag dimensions match current calibrator data
+            if length(DiffMag) ~= height(CalibratorTable)
+                % Dimension mismatch - recalculate DiffMag with current calibrators
+                warning('DiffMag dimensions (%d) do not match current calibrators (%d). Recalculating residuals.', ...
+                        length(DiffMag), height(CalibratorTable));
+                
+                % Recalculate residuals using the current calibrator data
+                % This ensures residuals correspond to sigma-clipped calibrators
+                try
+                    % Get final optimized parameters
+                    if ~isempty(obj.OptimizedParams)
+                        % Update Config with final parameters and calculate fresh residuals
+                        ConfigFinal = obj.Config;
+                        paramFields = fieldnames(obj.OptimizedParams);
+                        for i = 1:length(paramFields)
+                            if isfield(ConfigFinal.General, paramFields{i})
+                                ConfigFinal.General.(paramFields{i}) = obj.OptimizedParams.(paramFields{i});
+                            elseif isfield(ConfigFinal.FieldCorrection, paramFields{i})
+                                ConfigFinal.FieldCorrection.(paramFields{i}) = obj.OptimizedParams.(paramFields{i});
+                            elseif isfield(ConfigFinal.Atmospheric, paramFields{i})
+                                ConfigFinal.Atmospheric.(paramFields{i}) = obj.OptimizedParams.(paramFields{i});
+                            end
+                        end
+                        
+                        % Calculate residuals with current calibrators
+                        [~, DiffMag, ~] = transmissionFast.calculateCostFunction(CalibData, ConfigFinal);
+                    else
+                        % Fallback: use zeros if no optimized parameters available
+                        DiffMag = zeros(height(CalibratorTable), 1);
+                    end
+                catch ME
+                    warning('Failed to recalculate residuals: %s. Using zeros.', ME.message);
+                    DiffMag = zeros(height(CalibratorTable), 1);
+                end
+            end
+            
+            % Add DiffMag column (now guaranteed to match calibrator count)
             CalibratorTable.DIFF_MAG = DiffMag;
             
             % Add Gaia coordinates if available
