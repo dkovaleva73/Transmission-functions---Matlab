@@ -1,52 +1,64 @@
-function Transm = rayleighTransmission(Lam, Config)
-    % Approximate Rayleigh transmission of the Earth atmosphere as a
-    % function of zenith angle, atmospheric pressure and wavelength.
-    % Input :  - Lam (double array): Wavelength array.
-    %          - Config (struct): Configuration struct from inputConfig()
-    %            Uses Config.Atmospheric.Zenith_angle_deg
-    %            Uses Config.Atmospheric.Pressure_mbar
-    %            Uses Config.Data.Wave_units
+function Transm = rayleighTransmission(zenithAngle_deg, Args)
+    % Approximate Rayleigh transmission of the Earth atmosphere with caching
+    %
+    % Usage:
+    %   First call:  Transm = transmissionFast.atmospheric.rayleighTransmission(45); % Calculate for 45 degrees and cache
+    %   Later calls: Transm = transmissionFast.atmospheric.rayleighTransmission();   % Return cached result
+    %
+    % Input :  - zenithAngle_deg: Zenith angle in degrees (optional if cached)
+    %          - Args: Optional arguments
+    %            'Pressure' - Atmospheric pressure in mbar (default: 1013.25)
+    %            'Wavelength' - Wavelength array in nm (default: 300-1100 nm)
+    %            'WaveUnits' - Wavelength units (default: 'nm')
     % Output : - Transm (double array): The calculated transmission values (0-1).
-    % Reference: Gueymard, C. A. (2019). Solar Energy, 187, 233-253. SMARTS
-    % model.
+    % Reference: Gueymard, C. A. (2019). Solar Energy, 187, 233-253. SMARTS model.
     % Author:    D. Kovaleva (July 2025).
-    % Example:   Config = transmissionFast.inputConfig('default');
-    %            Lam = transmissionFast.utils.makeWavelengthArray(Config);
-    %            Trans = transmissionFast.atmospheric.rayleighTransmission(Lam, Config);   
-    arguments
-        Lam = []  % Will use cached wavelength array from Config if empty
-        Config = transmissionFast.inputConfig()
-    end
-    
-    % Use cached wavelength array if Lam not provided
-    if isempty(Lam)
-        if isfield(Config, 'WavelengthArray') && ~isempty(Config.WavelengthArray)
-            Lam = Config.WavelengthArray;
-        else
-            % Fallback to calculation if cached array not available
-            Lam = transmissionFast.utils.makeWavelengthArray(Config);
-        end
-    end
-    
-    % Extract parameters from Config
-    Z_ = Config.Atmospheric.Zenith_angle_deg;
-    Pressure = Config.Atmospheric.Pressure_mbar;
-    WaveUnits = Config.Data.Wave_units;
+    % Example:   % First call with zenith angle
+    %            Transm = transmissionFast.atmospheric.rayleighTransmission(45);
+    %            % Later calls without arguments
+    %            Transm = transmissionFast.atmospheric.rayleighTransmission();
 
-    % Checkup for zenith angle value correctness
-    if Z_ > 90 || Z_ < 0
+    persistent cachedTransm cachedZenith cachedArgs
+
+    arguments
+        zenithAngle_deg = []
+        Args.Pressure = 1013.25  % mbar, sea level standard
+        Args.Wavelength = linspace(300, 1100, 401)  % nm
+        Args.WaveUnits = 'nm'
+    end
+
+    % Check if requesting cached data (no zenith angle provided)
+    if isempty(zenithAngle_deg)
+        if isempty(cachedTransm)
+            error('No cached Rayleigh transmission data. Call with zenithAngle_deg first.');
+        end
+        Transm = cachedTransm;
+        return;
+    end
+
+    % Check if we can use cached data (same inputs)
+    if ~isempty(cachedTransm) && isequal(zenithAngle_deg, cachedZenith) && isequal(Args, cachedArgs)
+        Transm = cachedTransm;
+        return;
+    end
+
+    % Validate zenith angle
+    if zenithAngle_deg > 90 || zenithAngle_deg < 0
         error('Zenith angle out of range [0, 90] deg');
     end
 
-    % Calculate airmass using fast direct method (no caching)
-    Am_ = transmissionFast.utils.airmassFromSMARTS_am('rayleigh', Z_);
-    
-    % Convert wavelength to Angstroms
-    % LamAng = convert.energy('nm',Args.WaveUnits,Lam);
-    
+    % Get airmass for Rayleigh scattering from astro.atmosphere
+    Constituent_Airmasses = astro.atmosphere.airmassFromSMARTS(zenithAngle_deg);
+    Am_rayleigh = Constituent_Airmasses.rayleigh;
+
     % Calculate Rayleigh optical depth using AstroPack rayleighScattering
-    Tau_rayleigh = astro.atmosphere.rayleighScattering(Lam, Pressure, WaveUnits);
-    
-    % Calculate transmission (no clipping to preserve error detection)
-    Transm = exp(-Am_ .* Tau_rayleigh);
+    Tau_rayleigh = astro.atmosphere.rayleighScattering(Args.Wavelength, Args.Pressure, Args.WaveUnits);
+
+    % Calculate transmission
+    Transm = exp(-Am_rayleigh .* Tau_rayleigh);
+
+    % Cache the results
+    cachedTransm = Transm;
+    cachedZenith = zenithAngle_deg;
+    cachedArgs = Args;
 end
