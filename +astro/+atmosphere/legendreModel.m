@@ -1,5 +1,8 @@
 function Leg_model = legendreModel(Lam_rescaled, Li)
-    % Calculates Legendre polynomial model for instrumental transmission with caching
+    % Calculates Legendre polynomial model for perturbations to
+    % instrumental transmission.  Returns cashed result if called repeatedly with 
+    % empty input. Part of the Transmission package for absolute photometric calibration. 
+    % The input is supposed to be held fixed.
     % Input  : - Lam_rescaled (double array): input data rescaled to [-1,1]
     %                                         (initially wavelength array in nm)
     %          - Li: vector of Legendre coefficients
