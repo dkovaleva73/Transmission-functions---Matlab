@@ -6,15 +6,39 @@ function Transm = ozoneTransmission(zenithAngle_deg, dobsonUnits, Lam, waveUnits
     % Output: - Transm (double array): Transmission values (0-1)
     % Reference: Gueymard, C. A. (2019). Solar Energy, 187, 233-253.
     % Author: D. Kovaleva (Sep 2025) - Fast direct calculation version
-    % Example: Trans = transmissionFast.atmospheric.ozoneTransmission_am(Lam, 55.18, 300, 'nm');
+    % Example: Trans = astro.transmission.ozoneTransmission(55.18, 300);
     
     arguments
         zenithAngle_deg  = 30
         dobsonUnits  = 300
-        Lam = linspace(300,1100,401)      % added for uniformity, O3UV absorption data already interpolated to the net
-        waveUnits = "nm"           % for uniformity
+        Lam = linspace(300,1100,401);      % added for uniformity, O3UV absorption data already interpolated to the net
+        waveUnits = "nm";                  % for uniformity
     end
     %O3UV absorption
+    O3UV_cross_section = getO3UVcrossSection;
+
+   % Checkup for zenith angle value correctness
+    if zenithAngle_deg > 90 || zenithAngle_deg < 0
+        error('Zenith angle out of range [0, 90] deg');
+    end
+   
+    % Calculate airmass 
+    Am_ = astro.transmission.airmassSMARTS(zenithAngle_deg).ozone;
+       
+    % Loschmidt scaling
+    Absorption_coeff = constant.Loschmidt * O3UV_cross_section;
+    
+    % Convert Dobson units to atm-cm
+    Ozone_atm_cm = dobsonUnits * 0.001;
+
+    % Calculate optical depth
+    Tau_ozone = Absorption_coeff * Ozone_atm_cm;
+    
+    % Calculate transmission
+    Transm = exp(-Am_ .* Tau_ozone);
+end
+
+function O3UV_cross_section = getO3UVcrossSection()
     O3UV_cross_section = [
         3.5389000000e-19
         2.7236000000e-19
@@ -417,25 +441,5 @@ function Transm = ozoneTransmission(zenithAngle_deg, dobsonUnits, Lam, waveUnits
         0.0000000000e+00
         0.0000000000e+00
         0.0000000000e+00
-    ];
-
-   % Checkup for zenith angle value correctness
-    if zenithAngle_deg > 90 || zenithAngle_deg < 0
-        error('Zenith angle out of range [0, 90] deg');
-    end
-   
-    % Calculate airmass 
-    Am_ = astro.atmosphere.airmassFromSMARTS(zenithAngle_deg).ozone;
-       
-    % Loschmidt scaling
-    Absorption_coeff = constant.Loschmidt * O3UV_cross_section;
-    
-    % Convert Dobson units to atm-cm
-    Ozone_atm_cm = dobsonUnits * 0.001;
-
-    % Calculate optical depth
-    Tau_ozone = Absorption_coeff * Ozone_atm_cm;
-    
-    % Calculate transmission
-    Transm = exp(-Am_ .* Tau_ozone);
+        ];
 end
